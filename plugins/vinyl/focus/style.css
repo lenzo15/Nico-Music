@@ -1,0 +1,43 @@
+/* One sheet of album art behind all three surfaces, including the native-drag title bar. */
+body[data-focus-preset] { isolation: isolate; background: #141521; --mist: #ffffff18; --pearl: #f2e8ff; --muted: #d3cdda; --red: #ffc3b8; --line: #ffffff29; }
+.focusBackdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: radial-gradient(ellipse at 15% 10%, #477d82, transparent 60%), radial-gradient(at 85% 65%, #9a655e, transparent 64%), #37324b; }
+#focusWash { position: absolute; inset: -50px; filter: blur(38px) saturate(1.25); }
+#focusWash > svg { display: none; }
+#focusWash img, #focusSleeve img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.focusBackdrop::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, transparent, #090a1466 90%), linear-gradient(#14142373,#12141c66 48%,#10111bbd); }
+body[data-focus-preset] .windowBar, body[data-focus-preset] footer { color: #f9f6ff; border-color: var(--mist); background: #0f101c45; box-shadow: none; }
+body[data-focus-preset] .windowControls { background: #15152150; border-color: var(--line); box-shadow: none; }
+body[data-focus-preset] .windowControls button, body[data-focus-preset] footer .icon { color: #f1ebf6; }
+body[data-focus-preset] .windowControls button:hover, body[data-focus-preset] .icon:not(:disabled):hover { background: var(--mist); }
+body[data-focus-preset] .windowControls [data-window="close"]:hover { background: #963e58; color: white; }
+body[data-focus-preset] .logo, body[data-focus-preset] .toggle { background: linear-gradient(135deg, #fae1cf, #cdc0e7 60%, #b0ece2); color: #272334; }
+body[data-focus-preset] .toggle:hover { filter: brightness(1.1); }
+body[data-focus-preset] .timeline time, body[data-focus-preset] .trackText small { color: var(--muted); }
+body[data-focus-preset] footer .icon.on { color: var(--red); }
+body[data-focus-preset] input[type="range"] { background: linear-gradient(to right, var(--pearl) var(--fill,0%), #ffffff32 var(--fill,0%)); }
+body[data-focus-preset] input[type="range"]::-webkit-slider-thumb { background: var(--pearl); }
+#focusView { position: relative; overflow: hidden; container-type: size; height: calc(100dvh - var(--bar) - var(--chrome)); color: white; outline: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#focusView { --focus-tool-bg: #25233060; --focus-tool-hover: #24212abb; --menu-glass: #282832e8; --menu-edge: #ffffff29; --menu-ink: #f7f7fa; --menu-accent: #9dd6ff; --menu-hover: #ffffff15; }
+#auroraToggle { position: absolute; z-index: 1; top: 14px; left: 18px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 24px; color: #fff; background: #25233060; }
+#auroraToggle { left: auto; right: 18px; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
+#auroraToggle[aria-pressed="true"] { border-color: #a3e7e88c; color: #cef9f5; }
+#auroraCanvas { position: absolute; width: min(148%, 96cqw); height: 100%; left: 50%; transform: translateX(-50%); pointer-events: none; }
+#auroraToggle:hover { background: #24212abb; }
+.focusStage { position: relative; width: min(80cqw, 82cqh, 700px); aspect-ratio: 1; flex: none; }
+.tonearm { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.vinyl { position: absolute; inset: 22%; display: grid; place-items: center; border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 1px, #ffffff0c 1.6px, #0004 2.7px), conic-gradient(from 15deg,#111116,#313138 12%,#101116 25%,#544c53 36%,#17171c 43%,#111116 52%,#383943 69%,#111116 80%,#433e44 91%,#111116);
+  box-shadow: inset 0 0 0 1px #ffffff30, 0 0 0 3px #0c0c12, 0 0 0 4px #ffffff27, 0 14px 30px #0d0a175c; }
+#focusSleeve { position: relative; display: grid; place-items: center; overflow: hidden; border-radius: 50%; width: 66%; aspect-ratio: 1;
+  background: linear-gradient(145deg,#c69494,#554d70 55%,#92b7b9); box-shadow: 0 0 0 3px #100e16; }
+#focusSleeve > svg { width: 38%; height: 38%; opacity: .55; }
+.spindle { position: absolute; width: 2.6%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(at 35% 28%,white,#868591 45%,#34323a 72%); box-shadow: 0 1px 2px #000; }
+.tonearm { pointer-events: none; filter: drop-shadow(1px 3px 2px #0008); }
+.tonearm g { transform-origin: 76px 9px; transform: rotate(-26deg); transition: transform .85s cubic-bezier(.24,.07,.2,1); }
+#focusView.playing .tonearm g { transform: rotate(calc(6deg + var(--needle-travel,0deg))); }
+.focusCaption { max-width: 84%; text-align: center; }
+.focusCaption h2 { margin: 4px 0; font-size: clamp(18px,4cqh,32px); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: no-preference) { body[data-focus-preset] .focusStage, body[data-focus-preset] .focusCaption { animation: focus-arrive .45s ease-out both; } }
+@keyframes focus-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tonearm g { transition: none; } }

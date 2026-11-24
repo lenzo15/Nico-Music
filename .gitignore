@@ -1,0 +1,38 @@
+# Out-of-source builds, fetched SDKs and generated binaries
+/build/
+/build-*/
+/build_*/
+/out/
+/cmake-build-*/
+/_deps/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.exe
+*.dll
+*.obj
+*.lib
+*.pdb
+*.ilk
+*.res
+
+# Machine-specific IDE settings
+.vs/
+*.vcxproj.user
+*.suo
+CMakeUserPresets.json
+
+# Python test environments and plugin caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local player data (if NICOMUSIC_HOME is pointed into the checkout)
+WebView2/
+library.tsv
+library.tsv.*.tmp
+*.log
+.env
+.env.local
