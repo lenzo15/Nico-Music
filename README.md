@@ -2,6 +2,10 @@
 
 一个面向 Windows 的插件化、极简的仿网易云音乐播放器，基础插件支持B站直链播放音频。
 
+## 下载
+
+[NicoMusic v1.0.0 下载](https://github.com/lenzo15/Nico-Music/releases/tag/v1.0.0)
+
 ## 声明
 
 NicoMusic 仅用于学习、研究和个人使用。项目与 BiliBili 及相关服务提供方没有从属、授权或商业合作关系。项目不内置任何音频、视频或歌词资源。
