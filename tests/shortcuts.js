@@ -237,6 +237,7 @@ test("editable binding validation rejects reserved, duplicate, media and malform
     assert.equal(c.validHotkeyBinding(b), true);
   for (const b of [{modifiers: 0, key: 75}, {modifiers: 4, key: 75}, {modifiers: 8, key: 75},
     {modifiers: 1, key: 115}, {modifiers: 3, key: 46}, {modifiers: 3, key: 123},
+    {modifiers: 2, key: 89}, {modifiers: 2, key: 90},
     {modifiers: 3, key: 179}, {modifiers: 3, key: 175}, {modifiers: 3, key: 174},
     {modifiers: 3, key: 0}, {modifiers: "3", key: 75}]) assert.equal(c.validHotkeyBinding(b), false);
   const defaults = h.shortcuts.bindings();

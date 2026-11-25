@@ -1,4 +1,5 @@
 #include "station.hpp"
+#include "library_history.hpp"
 #include <ole2.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -272,6 +273,8 @@ void updatePromptResult(const string& phase, const string& error = {}) {
 string collectionMode, collectionSource;
 std::vector<Track> collectionPreview;
 uint64_t collectionId = 0;
+LibraryHistory libraryHistory;
+string pendingLibraryEdit, pendingHistoryResult;
 void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false,
              std::vector<int> importedTracks = {}) {
     if (!view || !ready)
@@ -372,7 +375,11 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
     }
     if (!imported.empty())
         data += ",\"imported\":" + quotedJson(imported);
+    if (!pendingLibraryEdit.empty()) data += ",\"libraryEdit\":" + pendingLibraryEdit;
+    if (!pendingHistoryResult.empty()) data += ",\"historyResult\":" + pendingHistoryResult;
     view->PostWebMessageAsJson(wide(data + "}").c_str());
+    pendingLibraryEdit.clear();
+    pendingHistoryResult.clear();
 }
 // WebView2 keeps real file paths out of JavaScript. Resolve only the File
 // explicitly passed by our own page after a drop or file-picker selection.
@@ -399,8 +406,41 @@ void handle(const string &message) {
     auto [cmd, arg] = split(trim(message));
     string result;
     bool changed = false;
+    std::optional<std::vector<Track>> beforeEdit;
+    string editKind;
+    size_t editCount = 1;
+    auto recordEdit = [&](bool success) {
+        if (!beforeEdit) return;
+        const auto id = libraryHistory.record(*beforeEdit, station->entries());
+        if (success || !id.empty()) {
+            if (editKind == "delete") editCount = beforeEdit->size() - station->entries().size();
+            pendingLibraryEdit = "{\"id\":" + quotedJson(id) + ",\"kind\":" + quotedJson(editKind) +
+                ",\"count\":" + std::to_string(editCount) + "}";
+        }
+        beforeEdit.reset();
+    };
     try {
+        if (cmd == "history-apply") {
+            const auto [id, direction] = split(arg);
+            if (direction != "undo" && direction != "redo") return;
+            string error;
+            try { libraryHistory.apply(*station, id, direction == "undo"); }
+            catch (const std::exception& e) { error = e.what(); }
+            pendingHistoryResult = "{\"id\":" + quotedJson(id) + ",\"direction\":" + quotedJson(direction) +
+                ",\"ok\":" + (error.empty() ? "true" : "false") + ",\"error\":" + quotedJson(error) + "}";
+            publish(true);
+            return;
+        }
         if (cmd == "window") { windowAction(arg); return; }
+        if (cmd == "open-data-folder") {
+            const auto dir = libraryFile().parent_path();
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            if (ec) throw std::runtime_error("无法创建数据文件夹，请检查目录权限");
+            if (reinterpret_cast<INT_PTR>(ShellExecuteW(window, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
+                throw std::runtime_error("无法打开数据文件夹，请检查目录是否可访问");
+            return;
+        }
         if (cmd == "hotkeys-capture") {
             if (!hotkeySettings) return;
             const auto [mode, token] = split(arg);
@@ -476,7 +516,11 @@ void handle(const string &message) {
             const string mode = collectionMode;
             collectionMode.clear();
             if (choice == "cancel") return;
+            beforeEdit = station->entries();
+            editKind = "collection";
+            editCount = songs.size();
             auto order = station->commitCollection(songs);
+            recordEdit(true);
             string playbackError;
             if (mode == "start") {
                 try { station->playSelection(order.front(), order); }
@@ -486,6 +530,9 @@ void handle(const string &message) {
             return;
         }
         if (cmd == "ready") {
+            libraryHistory.clear();
+            pendingLibraryEdit.clear();
+            pendingHistoryResult.clear();
             // A reloaded page cannot confirm an old preview.
             if (!collectionMode.empty()) {
                 station->engine().discardCollection();
@@ -510,13 +557,15 @@ void handle(const string &message) {
                 publish(false);
                 return;
             }
+            beforeEdit = station->entries();
+            editKind = "import";
             int i = station->add(arg);
             changed = true;
             if (cmd == "start")
-                station->play(i);
+                station->play(i, true); // Desktop lists show newest imports first.
             result = cmd;
         } else if (cmd == "play")
-            station->play(number(arg, 0, station->count() - 1));
+            station->play(number(arg, 0, station->count() - 1), true);
         else if (cmd == "playqueued") station->playQueued(arg);
         else if (cmd == "playset") {
             auto [start, indices] = split(arg);
@@ -533,9 +582,13 @@ void handle(const string &message) {
         } else if (cmd == "next" || cmd == "prev") station->step(cmd == "next" ? 1 : -1);
         else if (cmd == "repeat") station->setRepeat(arg);
         else if (cmd == "remove") {
+            beforeEdit = station->entries();
+            editKind = "delete";
             station->erase(number(arg, 0, station->count() - 1));
             changed = true;
         } else if (cmd == "removeurls") {
+            beforeEdit = station->entries();
+            editKind = "delete";
             std::unordered_set<string> urls;
             std::istringstream input(arg);
             for (string url; input >> url;) urls.insert(url);
@@ -563,8 +616,10 @@ void handle(const string &message) {
         } else if (cmd == "project") {
             browse("https://github.com/lenzo15/Nico-Music");
         }
+        recordEdit(true);
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
+        recordEdit(false);
         publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision");
     }
 }

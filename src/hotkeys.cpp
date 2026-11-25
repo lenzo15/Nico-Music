@@ -13,6 +13,7 @@ bool validHotkey(const HotkeyBinding& b) {
         (b.key >= VK_F1 && b.key <= VK_F11) || (b.key >= VK_PRIOR && b.key <= VK_DOWN) ||
         b.key == VK_SPACE || b.key == VK_INSERT || b.key == VK_DELETE;
     if (!key) return false;
+    if (b.modifiers == MOD_CONTROL && (b.key == 'Y' || b.key == 'Z')) return false;
     if ((b.key == VK_F4 && (b.modifiers & MOD_ALT)) ||
         (b.key == VK_DELETE && (b.modifiers & MOD_CONTROL) && (b.modifiers & MOD_ALT))) return false;
     return true;

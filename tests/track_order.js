@@ -1,6 +1,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {createTrackOrder, moveVisibleTracks} = require('../ui/track-order');
+const {createTrackOrder, moveVisibleTracks, reorderScrollSpeed} = require('../ui/track-order');
+
+test('drag edge scrolling is immediate, directional, bounded and faster near the edge', () => {
+  assert.equal(reorderScrollSpeed(300, 100, 500), 0);
+  assert.equal(reorderScrollSpeed(99, 100, 500), 0);
+  assert.equal(reorderScrollSpeed(500, 100, 500), 0);
+  assert.equal(reorderScrollSpeed(150, 100, 500) < 0, true);
+  assert.equal(reorderScrollSpeed(450, 100, 500) > 0, true);
+  assert.equal(Math.abs(reorderScrollSpeed(101, 100, 500)) > Math.abs(reorderScrollSpeed(140, 100, 500)), true);
+  assert.equal(reorderScrollSpeed(100, 100, 500), -720);
+  assert.equal(reorderScrollSpeed(115, 100, 130), 0);
+  assert.equal(reorderScrollSpeed(101, 100, 130) < 0, true);
+  assert.equal(reorderScrollSpeed(129, 100, 130) > 0, true);
+  assert.equal(reorderScrollSpeed(100, 100, 100), 0);
+});
 
 test('filtered group move changes only visible slots and keeps group order', () => {
   const full = ['A', 'hidden1', 'B', 'C', 'hidden2', 'D'];

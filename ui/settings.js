@@ -2,6 +2,9 @@
 function createSettings({shortcuts, send, notify, desktop}) {
   const el = id => document.getElementById(id), dialog = el("settings");
   const actions = ["prev", "next", "toggle"];
+  el("openDataFolder").disabled = !desktop;
+  el("openDataFolder").title = desktop ? "在资源管理器中打开当前数据文件夹" : "请在 NicoMusic 桌面窗口中打开数据文件夹";
+  el("openDataFolder").onclick = () => { if (desktop) send("open-data-folder"); };
   let draft = shortcuts.bindings(), ready = false, saving = false, target = -1, recording = false, captureRequest = 0;
   let loadWarning = "", retryRegistration = false;
   function sendCapture(enabled) { send(`hotkeys-capture ${enabled ? "on" : "off"} ${++captureRequest}`); }
@@ -54,7 +57,7 @@ function createSettings({shortcuts, send, notify, desktop}) {
     if (dialog.open) return;
     draft = shortcuts.bindings();
     status(!desktop ? "请在 NicoMusic 桌面窗口中编辑热键" : loadWarning);
-    render(); showTab("hotkeys"); dialog.showModal(); el("settingsTabHotkeys").focus();
+    render(); showTab("general"); dialog.showModal(); el("settingsTabGeneral").focus();
   };
   function record(index) {
     if (!ready || saving || !desktop) return;

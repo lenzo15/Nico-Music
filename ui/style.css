@@ -233,29 +233,47 @@ nav button.selected {
 .asideEnd {
   margin-top: auto;
   border-top: 1px solid var(--line);
-  padding: 19px 3px 0;
+  padding: 19px 0 0;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
+}
+.asideIdentity {
+  flex: 1;
+  min-width: 0;
+}
+.asideEnd strong, .asideEnd small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .asideEnd strong {
   font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+  letter-spacing: -.2px;
 }
 .asideEnd small {
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 1.55px;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: .2px;
 }
 .asideEnd button {
   margin-left: auto;
   font-size: 11px;
 }
-/* iOS-inspired settings sheet: fixed chrome, inset groups, quiet scroll indicator. */
+/* Shared dialog chrome; each sheet keeps its own sizing and content layout. */
 #settings {
   width: min(620px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
   /* Keep the outer sheet independent of each tab's intrinsic content size. */
   height: min(522px, calc(100dvh - 32px));
+}
+dialog.sheet {
+  --sheet-inset: 24px;
   max-height: calc(100dvh - 32px);
   padding: 0;
   overflow: hidden;
@@ -265,13 +283,12 @@ nav button.selected {
   backdrop-filter: blur(28px) saturate(160%);
   box-shadow: 0 28px 90px #24232d29, 0 2px 10px #24232d0a;
 }
-#settings::backdrop { background: #25263138; backdrop-filter: blur(10px); }
+dialog.sheet::backdrop { background: #25263138; backdrop-filter: blur(10px); }
 .settingsFrame { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
-.settingsHeader { position: relative; flex: none; margin: 0; padding: 24px 24px 18px; }
-#settings .settingsHeader h2 { margin: 0; font-size: 27px; line-height: 1.25; font-weight: 700; letter-spacing: -.7px; }
-#settings .close { top: 24px; right: 24px; width: 28px; height: 28px; border-radius: 50%; color: #777982; background: #76768014; }
-#settings .close svg { width: 15px; height: 15px; stroke-width: 2; }
-#settings .close:hover { color: var(--ink); background: #76768024; }
+.sheetHeader { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: var(--sheet-inset) var(--sheet-inset) 16px; }
+.sheet .sheetHeader .close { position: static; width: 28px; height: 28px; border-radius: 50%; color: #777982; background: #76768014; }
+.sheetHeader .close svg { width: 15px; height: 15px; stroke-width: 2; }
+.sheet .sheetHeader .close:hover { color: var(--ink); background: #76768024; }
 .settingsTabs { display: flex; flex: none; gap: 3px; margin: 0 24px 18px; padding: 4px; border-radius: 13px; background: #76768012; }
 .settingsTabs button { flex: 1; min-height: 32px; padding: 5px 14px; border-radius: 10px; color: #777982; font-size: 13px; font-weight: 600; }
 .settingsTabs [aria-selected="true"] { color: #30313a; background: #ffffffed; box-shadow: 0 2px 6px #24232d12, 0 0 1px #24232d12; }
@@ -305,15 +322,16 @@ nav button.selected {
 #settings .hotkeyRow input.isRecording { color: var(--red-dark); background: #fff0f2; box-shadow: inset 0 0 0 1px #e64a5830; }
 #settings #hotkeyEditStatus { margin: 12px 0; font-size: 12px; }
 .settingsActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-#settings .settingsActions button, #settings .updateActions button, #settings #resetExit { min-height: 36px; padding: 8px 14px; border-radius: 12px; font-size: 12px; }
-#settings .settingsActions .subtle, #settings .updateActions .subtle, #settings #resetExit { border-color: #3c3c4310; background: #ffffffb3; font-weight: 500; }
+.sheet :is(.settingsActions, .updateActions, .actions) button, #settingsGeneral button { min-height: 36px; padding: 8px 14px; border-radius: 12px; font-size: 12px; }
+.sheet :is(.settingsActions, .updateActions, .actions) .subtle, #settingsGeneral .subtle { border-color: #3c3c4310; background: #ffffffb3; font-weight: 500; }
 #settings .settingsActions .primary { min-width: 112px; margin-left: auto; }
-#settings :is(.settingsActions, .updateActions) .subtle:hover, #settings #resetExit:hover { background: #ededf2; }
-#settings .primary { border: 0; background: linear-gradient(180deg, #e84a57, #d63a49); box-shadow: 0 3px 8px #d63a4917; }
-#settings .primary:hover { background: #cc3444; }
+.sheet :is(.settingsActions, .updateActions, .actions) .subtle:hover, #settingsGeneral .subtle:hover { background: #ededf2; }
+.sheet .primary { border: 0; background: linear-gradient(180deg, #e84a57, #d63a49); box-shadow: 0 3px 8px #d63a4917; }
+.sheet .primary:hover { background: #cc3444; }
 #settings .settingsNotice { padding: 10px 12px; border-radius: 12px; color: #a65b24; background: #fff2df; overflow-wrap: anywhere; }
-#settingsGeneral, #about { padding: 18px; border: 1px solid #3c3c4310; border-radius: 18px; background: #ffffffd9; }
-#settingsGeneral > h3, #about > h3 { margin-bottom: 8px; }
+.sheetCard, #settingsGeneral, #about { padding: 18px; border: 1px solid #3c3c4310; border-radius: 18px; background: #ffffffd9; }
+#settingsGeneral h3, #about > h3 { margin-bottom: 8px; }
+.generalSection + .generalSection { margin-top: 18px; padding-top: 18px; border-top: 1px solid #3c3c430d; }
 #settings .updatePanel { margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid #3c3c430d; border-bottom: 0; }
 #settings .updatePanel p { margin: 6px 0 12px; }
 #settings .autoUpdate { margin-top: 16px; padding-top: 14px; border-top: 1px solid #3c3c430d; }
@@ -321,17 +339,18 @@ nav button.selected {
 #settings .autoUpdate input::before { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px #0002; transition: transform .15s; }
 #settings .autoUpdate input:checked { background: var(--red); }
 #settings .autoUpdate input:checked::before { transform: translateX(18px); }
-#settings :is(button, input, a):focus-visible { outline: 2px solid #e65a6880; outline-offset: 2px; }
+.sheet :is(button, input, a):focus-visible { outline: 2px solid #e65a6880; outline-offset: 2px; }
 @media (prefers-reduced-transparency: reduce) {
-  #settings { background: #f6f6f9; backdrop-filter: none; }
-  #settings::backdrop { backdrop-filter: none; }
+  dialog.sheet { background: #f6f6f9; backdrop-filter: none; }
+  dialog.sheet::backdrop { backdrop-filter: none; }
 }
 @media (forced-colors: active) {
-  #settings, .hotkeyGroup, #settingsGeneral, #about { border-color: CanvasText; background: Canvas; }
+  dialog.sheet, .sheetCard, .hotkeyGroup, #settingsGeneral, #about { border-color: CanvasText; background: Canvas; }
   #settings .autoUpdate input { appearance: auto; width: auto; height: auto; }
   #settings .autoUpdate input::before { display: none; }
 }
 .eq {
+  flex: none;
   width: 32px;
   height: 32px;
   border-radius: 10px;
@@ -352,6 +371,17 @@ nav button.selected {
 }
 .eq b:nth-child(3) {
   height: 13px;
+}
+.eq b:nth-child(4) { height: 11px; }
+@media (prefers-reduced-motion: no-preference) {
+  .asideEnd[data-playing="true"] .eq b { animation: sidebar-wave .9s ease-in-out infinite alternate; }
+  .asideEnd[data-playing="true"] .eq b:nth-child(2) { animation-delay: -.4s; }
+  .asideEnd[data-playing="true"] .eq b:nth-child(3) { animation-delay: -.7s; }
+  .asideEnd[data-playing="true"] .eq b:nth-child(4) { animation-delay: -.2s; }
+  @keyframes sidebar-wave {
+    from { transform: scaleY(.4); }
+    to { transform: scaleY(1); }
+  }
 }
 main {
   min-width: 0;
@@ -456,13 +486,14 @@ h3,
 p {
   margin: 0;
 }
-#heading {
+#heading, .sheetHeader h2 {
   font-size: clamp(18px, 1.6vw, 22px);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
-  margin: 5px auto 5px 0;
 }
+#heading { margin: 5px auto 5px 0; }
+.sheet .sheetHeader h2 { margin: 0; }
 header p,
 dialog p {
   color: var(--muted);
@@ -920,9 +951,11 @@ dialog label {
   font-weight: 600;
   margin-top: 16px;
 }
-.importTools { display: flex; align-items: center; gap: 8px; }
-#addForm .close { position: static; }
-#localDrop { flex: 1; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
+#addForm { display: flex; flex-direction: column; max-height: calc(100dvh - 36px); }
+.importFields { margin-inline: var(--sheet-inset); overflow-y: auto; scrollbar-width: thin; }
+#addForm .actions { flex: none; margin: 16px var(--sheet-inset) var(--sheet-inset); }
+#importStatus { margin: 12px 0 0; }
+#localDrop { width: 100%; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
 #localDrop small { margin-left: 6px; color: var(--muted); }
 #localDrop:hover, #addForm.dragging #localDrop { border-color: var(--red); color: var(--red); }
 dialog label small {
@@ -942,20 +975,28 @@ dialog input {
 .rememberExit input { width: auto; margin: 0; padding: 0; accent-color: var(--red); }
 .pluginConfirm { width: min(340px, 90vw); padding: 0; overflow: hidden; }
 .pluginConfirm iframe { display: block; width: 100%; height: min(190px, 80vh); border: 0; }
-#deleteListDialog { width: min(320px, 90vw); padding: 0; text-align: center; background: var(--wash); }
+#deleteListDialog { width: min(320px, 90vw); padding: 0; overflow: clip; text-align: center; background: var(--wash); }
+#deleteListDialog[open] { display: flex; flex-direction: column; }
 #deleteListTitle { margin: 22px 20px 6px; font-size: 18px; letter-spacing: -.02em; }
-#deleteListHint { margin: 0 20px 20px; line-height: 1.5; overflow-wrap: anywhere; }
+#deleteListHint { min-height: 0; margin: 0 20px 20px; line-height: 1.5; overflow-wrap: anywhere; overflow: clip; }
+#deleteListDialog .alertActions { flex: none; }
 .alertActions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
 .alertActions button { min-height: 44px; font-size: 15px; }
 .alertActions button:hover { background: #76768012; }
+/* These buttons sit flush with the dialog edge: change color, not position, on press. */
+#deleteListDialog button:active { transform: none; background: #76768024; }
 .alertActions button:focus-visible { outline-offset: -4px; border-radius: 8px; }
 #cancelDeleteList { font-weight: 600; }
 #confirmDeleteList { color: var(--red-dark); border-left: 1px solid var(--line); }
-#queueDialog { margin: auto 16px calc(var(--bar) + 8px) auto; width: min(380px, 90vw); padding: 18px 22px; }
-#queueDialog h2 { font-size: 20px; }
+#queueDialog { margin: auto 16px calc(var(--bar) + 8px) auto; width: min(380px, 90vw); }
+.queueCard { margin: 0 var(--sheet-inset) var(--sheet-inset); padding: 8px; }
+#queueEmpty { margin: 0; padding: 16px 8px; text-align: center; }
+#queueItems:empty { display: none; }
 #queueCount { font-size: 13px; color: #786f79; font-weight: 400; }
 #queueItems { margin: 0; padding: 0 0 0 32px; max-height: min(48vh, 440px); overflow-y: auto; scrollbar-width: thin; }
-#queueItems li::marker { color: #786f79; font-size: 12px; }
+#queueItems li + li { border-top: 1px solid #3c3c430d; }
+#queueItems li::marker { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#queueItems button:focus-visible { outline-offset: -2px; }
 #queueItems button { width: 100%; padding: 9px; text-align: left; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #queueItems button:hover { background: #f6f3f6; }
 #queueItems button[aria-current] { color: #ab3544; background: #fbecef; font-weight: 650; }
@@ -1038,6 +1079,10 @@ aside { min-height: 0; overflow-y: auto; }
   .listHead span, #listNav button span { display: none; }
 }
 #toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 20;
   position: fixed;
   max-width: min(75vw, 590px);
   left: 50%;
@@ -1055,7 +1100,12 @@ aside { min-height: 0; overflow-y: auto; }
 }
 #toast.show {
   opacity: 1;
+  pointer-events: auto;
 }
+#toast span { min-width: 0; overflow-wrap: anywhere; }
+#toast button { flex: none; padding: 4px 8px; border-radius: 6px; color: #ffd6dc; background: #ffffff14; font-weight: 600; }
+#toast button:hover { background: #ffffff28; }
+#toast button:focus-visible { outline: 2px solid #ffd6dc; outline-offset: 2px; }
 [hidden] {
   display: none !important;
 }

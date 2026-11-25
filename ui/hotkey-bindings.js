@@ -13,7 +13,8 @@ function validHotkeyBinding(b) {
   if (!b || !Number.isInteger(b.modifiers) || !Number.isInteger(b.key)) return false;
   if (!b.key) return b.modifiers === 0;
   return b.modifiers >= 0 && b.modifiers <= 7 && !!(b.modifiers & 3) && !!hotkeyName(b.key) &&
-    !(b.key === 115 && (b.modifiers & 1)) && !(b.key === 46 && (b.modifiers & 3) === 3);
+    !(b.key === 115 && (b.modifiers & 1)) && !(b.key === 46 && (b.modifiers & 3) === 3) &&
+    !(b.modifiers === 2 && [89, 90].includes(b.key)); // Ctrl+Y/Z belong to edit history (and text inputs).
 }
 function validHotkeyBindings(bindings) {
   return Array.isArray(bindings) && bindings.length === 3 && bindings.every(validHotkeyBinding) &&

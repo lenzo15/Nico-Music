@@ -66,18 +66,47 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             return cdp('Runtime.evaluate', {'expression': expression, 'returnByValue': True})['result'].get('value')
 
         until(lambda: js('document.readyState === "complete"'))
+        assert js("$('sidebarStatus').textContent === '随心听好音乐' && $('sidebarStatusArea').dataset.playing === 'false'")
         js("""
           tracks = Array.from({length: 100}, (_, i) => ({url: `file:///test/${i}.wav`, name: `Track ${i}`}));
           fav = new Set(tracks.slice(0, 60).map(t => t.url));
           lists.create('Scroll test', tracks.slice(0, 80).map(t => t.url));
           refreshListNav(); sync();
         """)
+        assert js("$('sidebarStatus').textContent === '100 首音乐'")
+        js("state={...state,index:0,playing:false,paused:false,elapsed:-1}; sync()")
+        assert js("$('sidebarStatus').textContent === '正在载入…' && $('sidebarStatusArea').dataset.playing === 'false'")
+        js("state={...state,playing:true,elapsed:1}; sync()")
+        assert js("$('sidebarStatus').textContent === '正在播放' && $('sidebarStatusArea').dataset.playing === 'true'")
+        cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'no-preference'}]})
+        assert js("getComputedStyle(document.querySelector('.eq b')).animationName === 'sidebar-wave'")
+        cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
+        assert js("getComputedStyle(document.querySelector('.eq b')).animationName === 'none'")
+        cdp('Emulation.setEmulatedMedia', {'features': []})
+        js("state.paused=true; sync()")
+        assert js("$('sidebarStatus').textContent === '已暂停' && $('sidebarStatusArea').dataset.playing === 'false' && getComputedStyle(document.querySelector('.eq b')).animationName === 'none'")
+        js("state={...state,playing:false,paused:false}; sync()")
+        assert js("$('sidebarStatus').textContent === '已停止'")
+        js("state.index=-1; sync()")
+        print('OK: sidebar identity, library count, loading/play/pause/stop status and reduced-motion equalizer')
+        for page, newest in [('library', 99), ('likes', 59), (js('lists.items[0].id'), 79)]:
+            js(f"select({json.dumps(page)})")
+            assert js("[...document.querySelectorAll('.row strong')].map(n => n.textContent)") == [
+                f'Track {i}' for i in range(newest, -1, -1)]
         fixed_geometry = """['.windowBar', '.topbar', '.collectionTools', '#batchBar', 'footer'].map(s => {
           const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom];
         })"""
         for width, height in [(1180, 776), (900, 650), (610, 445)]:
             cdp('Emulation.setDeviceMetricsOverride', {'width': width, 'height': height,
                                                      'deviceScaleFactor': 1, 'mobile': False})
+            assert js("""(() => {
+              const area=$('sidebarStatusArea'), button=$('settingsButton'), aside=document.querySelector('aside');
+              const a=area.getBoundingClientRect(), b=button.getBoundingClientRect(), s=aside.getBoundingClientRect();
+              const identity=document.querySelector('.asideIdentity');
+              return a.left>=s.left && b.right<=s.right && area.scrollWidth<=area.clientWidth &&
+                (innerWidth<=720 ? getComputedStyle(identity).display==='none' :
+                  identity.getBoundingClientRect().right<=b.left && identity.firstElementChild.scrollWidth<=identity.clientWidth);
+            })()"""), (width, height, 'sidebar status fits')
             for batch in (False, True):
                 js("select('library')" + ("; $('batchToggle').click()" if batch else ''))
                 assert js("$('rows').scrollHeight > $('rows').clientHeight && $('rows').clientHeight > 30")
@@ -101,6 +130,51 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                 js("$('rows').scrollTop = 500; $('listNav').firstElementChild.click()")
                 assert js("$('rows').scrollTop === 0 && $('heading').textContent === 'Scroll test'")
             print(f'OK: {width}x{height}, wheel scrolls only tracks, fixed controls with/without batch, page reset')
+            js("$('deleteList').click()")
+            assert js("""(() => {
+              const d=$('deleteListDialog'), hint=$('deleteListHint');
+              return d.matches(':modal') && hint.scrollHeight <= hint.clientHeight &&
+                d.scrollHeight <= d.clientHeight && d.offsetWidth - d.clientWidth <= 2;
+            })()""")
+            js("$('deleteListHint').textContent='将删除「' + '歌'.repeat(60) + '」，其中的歌曲仍保留在音乐库中。'")
+            assert js("$('deleteListHint').scrollHeight <= $('deleteListHint').clientHeight")
+            x, y, bottom = js("(() => { const r=$('confirmDeleteList').getBoundingClientRect(); return [r.x+r.width/2,r.y+r.height/2,r.bottom]; })()")
+            cdp('Input.dispatchMouseEvent', {'type': 'mousePressed', 'button': 'left', 'buttons': 1,
+                                             'clickCount': 1, 'x': x, 'y': y})
+            time.sleep(.5)  # Still pressed, past the end of the button transition.
+            assert js("""(() => {
+              const d=$('deleteListDialog'), b=$('confirmDeleteList');
+              return d.matches(':modal') && b.matches(':active') &&
+                b.getBoundingClientRect().bottom <= d.getBoundingClientRect().bottom &&
+                d.scrollHeight <= d.clientHeight && d.offsetWidth - d.clientWidth <= 2;
+            })()"""), (width, height, 'held delete button')
+            assert js("$('confirmDeleteList').getBoundingClientRect().bottom") == bottom
+            # Release over the heading so the fixture playlist is not deleted.
+            y = js("$('deleteListTitle').getBoundingClientRect().top + 2")
+            cdp('Input.dispatchMouseEvent', {'type': 'mouseReleased', 'button': 'left', 'x': x, 'y': y})
+            # Even in a constrained dialog neither the hint nor the shell can scroll.
+            assert js("""(() => {
+              const d=$('deleteListDialog'), hint=$('deleteListHint');
+              d.style.maxHeight='160px'; hint.scrollTop=100; d.scrollTop=100;
+              const fits=hint.scrollTop === 0 && d.scrollTop === 0 &&
+                $('confirmDeleteList').getBoundingClientRect().bottom <= d.getBoundingClientRect().bottom;
+              d.style.maxHeight=''; $('cancelDeleteList').click(); return fits;
+            })()""")
+            for dialog in ('listDialog', 'assignDialog', 'addDialog', 'queueDialog', 'exitDialog'):
+                assert js(f"""(() => {{ const d=$('{dialog}'); d.showModal();
+                  const fits=d.scrollHeight <= d.clientHeight && d.scrollWidth <= d.clientWidth;
+                  d.close(); return fits; }})()"""), (width, height, dialog)
+            chrome = []
+            for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), ('viewQueue', 'queueDialog')]:
+                js(f"$('{opener}').click()")
+                chrome.append(js(f"""(() => {{ const d=$('{dialog}'), h=d.querySelector('header h2'), b=d.querySelector('.close');
+                  return [getComputedStyle(d).backgroundColor, getComputedStyle(d).borderRadius,
+                    getComputedStyle(h).font, getComputedStyle(b).borderRadius, b.offsetWidth,
+                    d.getBoundingClientRect().right - b.getBoundingClientRect().right]; }})()"""))
+                assert js(f"getComputedStyle($('{dialog}').querySelector('h2')).fontSize === getComputedStyle($('heading')).fontSize")
+                js(f"$('{dialog}').querySelector('.close').click()")
+            assert chrome[0] == chrome[1] == chrome[2], chrome
+            print(f'OK: {width}x{height}, compact dialogs fit and all three sheets share header and surface styles')
         js("select('library'); $('rows').focus()")
         cdp('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})
         cdp('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})

@@ -156,7 +156,7 @@ try:
             # An initial native toggle uses the current page, not the whole library.
             js("fav=new Set([tracks[1].url,tracks[2].url]); select('likes')")
             hotkey(3)
-            until(lambda: js("state.index===1 && state.playing && state.queue.join(',')==='1,2'"))
+            until(lambda: js("state.index===2 && state.playing && state.queue.join(',')==='2,1'"))
             hotkey(3)
             until(lambda: js('state.paused'))
             hotkey(3)
@@ -169,28 +169,28 @@ try:
                                               'modifiers': 3, 'windowsVirtualKeyCode': 0x27})
             else:
                 hotkey(2)
-            until(lambda: js('state.index===2 && state.playing'))
-            hotkey(1)
             until(lambda: js('state.index===1 && state.playing'))
+            hotkey(1)
+            until(lambda: js('state.index===2 && state.playing'))
             hotkey(1)  # Disabled previous button at the start of the scoped queue.
             time.sleep(.5)
-            assert js('state.index===1')
+            assert js('state.index===2')
             hotkey(6)
             until(lambda: js('state.paused'))
             hotkey(6)
             until(lambda: js('!state.paused && state.playing'))
             hotkey(5)
-            until(lambda: js('state.index===2 && state.playing'))
-            hotkey(4)
             until(lambda: js('state.index===1 && state.playing'))
+            hotkey(4)
+            until(lambda: js('state.index===2 && state.playing'))
             media_command(14)  # APPCOMMAND_MEDIA_PLAY_PAUSE
             until(lambda: js('state.paused'))
             media_command(14)
             until(lambda: js('!state.paused && state.playing'))
             media_command(11)  # APPCOMMAND_MEDIA_NEXTTRACK
-            until(lambda: js('state.index===2 && state.playing'))
-            media_command(12)  # APPCOMMAND_MEDIA_PREVIOUSTRACK
             until(lambda: js('state.index===1 && state.playing'))
+            media_command(12)  # APPCOMMAND_MEDIA_PREVIOUSTRACK
+            until(lambda: js('state.index===2 && state.playing'))
             user32.PostMessageW(hwnd, 0x112, 0xF020, 0)  # SC_MINIMIZE to tray
             until(lambda: not user32.IsWindowVisible(wintypes.HWND(hwnd)))
             hotkey(6)
@@ -203,9 +203,9 @@ try:
             media_command(9)
             until(lambda: js('state.volume===70'))
             hotkey(5)
-            until(lambda: js('state.index===2 && state.playing'))
-            hotkey(4)
             until(lambda: js('state.index===1 && state.playing'))
+            hotkey(4)
+            until(lambda: js('state.index===2 && state.playing'))
             assert not user32.IsWindowVisible(wintypes.HWND(hwnd))
             check_tray_restore(wintypes.HWND(hwnd), until)
             assert js("$('toggle').title.includes('全局')")
@@ -213,7 +213,7 @@ try:
                   (', conflict warning and local fallback' if conflict else ''))
             if not conflict:
                 user32.SetForegroundWindow(hwnd)
-                js("$('settingsButton').click(); $('hotkey-prev').click()")
+                js("$('settingsButton').click(); $('settingsTabHotkeys').click(); $('hotkey-prev').click()")
                 until(lambda: js("$('hotkey-prev').value==='请按组合键…'"))
                 assert user32.RegisterHotKey(None, 60, MODIFIERS, KEYS[1]), 'Recording did not release the old combination'
                 user32.UnregisterHotKey(None, 60)
@@ -230,9 +230,9 @@ try:
                 ALL_KEYS[1] = 119
                 js("$('settings').querySelector('.close').click()")
                 hotkey(5)
-                until(lambda: js('state.index===2'))
-                hotkey(1)
                 until(lambda: js('state.index===1'))
+                hotkey(1)
+                until(lambda: js('state.index===2'))
                 print('OK: real capture suspension, persistent custom registration, old key release and unchanged fixed media keys')
         finally:
             if ws:

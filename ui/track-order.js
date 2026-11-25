@@ -41,35 +41,98 @@ function moveVisibleTracks(full, visible, moving, target, after) {
   return full.map(url => slots.has(url) ? reordered[i++] : url);
 }
 
+// Pixels per second. A short viewport gets smaller, non-overlapping edge zones.
+function reorderScrollSpeed(y, top, bottom) {
+  const edge = Math.min(56, (bottom - top) / 3);
+  if (edge <= 0 || y < top || y >= bottom) return 0;
+  const distance = Math.min(y - top, bottom - y);
+  if (distance >= edge) return 0;
+  const strength = 1 - distance / edge;
+  return (y < top + edge ? -1 : 1) * (80 + 640 * strength * strength);
+}
+
 function createReorderHandles(rows, {selected, visible, move}) {
-  let moving = null, hint = null;
+  let moving = null, hint = null, pointer = null, frame = null, lastTime = null;
   function clearHint() {
     if (hint) delete hint.dataset.insert;
     hint = null;
   }
-  function reset() { clearHint(); moving = null; }
-  function group(url) { return selected.has(url) ? new Set(selected) : new Set([url]); }
-  function target(e) {
-    const row = e.target.closest('.pick');
-    if (!moving || !row || !rows.contains(row) || moving.has(row.dataset.url)) return null;
-    const r = row.getBoundingClientRect();
-    return {row, after: e.clientY >= r.top + r.height / 2};
+  function stopScroll() {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null; lastTime = null;
   }
-  rows.addEventListener('dragover', e => {
-    const dest = target(e);
+  function reset() { stopScroll(); clearHint(); moving = null; pointer = null; }
+  function group(url) { return selected.has(url) ? new Set(selected) : new Set([url]); }
+  function inside(point, rect) {
+    return point && point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom;
+  }
+  function target(point) {
+    if (!moving || !inside(point, rows.getBoundingClientRect())) return null;
+    // Drag events can keep their old target while scrolling under a stationary pointer.
+    const row = document.elementFromPoint(point.x, point.y)?.closest('.pick');
+    if (!row || !rows.contains(row) || moving.has(row.dataset.url)) return null;
+    const r = row.getBoundingClientRect();
+    return {row, after: point.y >= r.top + r.height / 2};
+  }
+  function updateHint() {
+    const dest = target(pointer);
     if (!dest) { clearHint(); return; }
-    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
     if (hint !== dest.row) clearHint();
     hint = dest.row; hint.dataset.insert = dest.after ? 'after' : 'before';
+  }
+  function speed() {
+    const rect = rows.getBoundingClientRect();
+    if (!moving || !inside(pointer, rect)) return 0;
+    const value = reorderScrollSpeed(pointer.y, rect.top, rect.bottom);
+    return value < 0 && rows.scrollTop <= 0 ||
+      value > 0 && rows.scrollTop >= rows.scrollHeight - rows.clientHeight - 1 ? 0 : value;
+  }
+  function scroll(time) {
+    frame = null;
+    const velocity = speed();
+    if (!velocity) { lastTime = null; return; }
+    const elapsed = lastTime === null ? 1 / 60 : Math.min(50, time - lastTime) / 1000;
+    lastTime = time;
+    rows.scrollTop += velocity * elapsed;
+    updateHint();
+    if (speed()) frame = requestAnimationFrame(scroll);
+    else lastTime = null;
+  }
+  // Track our own drag even over the dragged/selected rows, not just valid drop targets.
+  document.addEventListener('dragover', e => {
+    if (!moving) return;
+    pointer = {x: e.clientX, y: e.clientY};
+    if (inside(pointer, rows.getBoundingClientRect())) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    }
+    updateHint();
+    if (speed()) {
+      if (frame === null) frame = requestAnimationFrame(scroll);
+    } else stopScroll();
+  }, true);
+  rows.addEventListener('dragleave', e => {
+    // Crossing children (also caused by scrolling) may report a null relatedTarget.
+    if (!inside({x: e.clientX, y: e.clientY}, rows.getBoundingClientRect())) {
+      stopScroll(); clearHint(); pointer = null;
+    }
   });
-  rows.addEventListener('dragleave', e => { if (!rows.contains(e.relatedTarget)) clearHint(); });
+  document.addEventListener('dragleave', e => {
+    if ((e.target === document.documentElement || e.target === document) && !e.relatedTarget) {
+      stopScroll(); clearHint(); pointer = null;
+    }
+  });
   rows.addEventListener('drop', e => {
     if (!moving) return;
     e.preventDefault();
-    const dest = target(e), group = moving;
+    const dest = target({x: e.clientX, y: e.clientY}), group = moving;
     reset();
     if (dest) move(group, dest.row.dataset.url, dest.after);
   });
+  document.addEventListener('drop', e => { if (!rows.contains(e.target)) reset(); });
+  document.addEventListener('dragend', reset);
+  window.addEventListener('blur', reset);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
   return {
     reset,
     attach(row, url, title) {
@@ -80,6 +143,7 @@ function createReorderHandles(rows, {selected, visible, move}) {
       handle.setAttribute('aria-label', `调整「${title}」顺序，使用上下方向键移动`);
       handle.innerHTML = '<svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>';
       handle.ondragstart = e => {
+        reset();
         moving = group(url); e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', ''); e.dataTransfer.setDragImage(row, 20, row.offsetHeight / 2);
       };
@@ -98,4 +162,4 @@ function createReorderHandles(rows, {selected, visible, move}) {
     },
   };
 }
-if (typeof module !== 'undefined') module.exports = {createTrackOrder, moveVisibleTracks};
+if (typeof module !== 'undefined') module.exports = {createTrackOrder, moveVisibleTracks, reorderScrollSpeed};

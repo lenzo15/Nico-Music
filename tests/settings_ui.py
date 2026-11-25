@@ -102,7 +102,13 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(lambda: js("document.readyState==='complete' && document.getElementById('hotkey-prev') && !document.getElementById('hotkey-prev').disabled"))
         assert js("!document.getElementById('info') && $('settingsButton').getAttribute('aria-label')==='设置'")
         js("$('settingsButton').click()")
-        assert js("$('settings').open && !$('settingsHotkeys').hidden && $('about').hidden && $('hotkey-prev').value==='Ctrl + Alt + ←'")
+        assert js("$('settings').open && !$('settingsGeneral').hidden && $('settingsHotkeys').hidden && $('about').hidden && document.activeElement===$('settingsTabGeneral')")
+        assert js("JSON.stringify([...document.querySelectorAll('[data-settings-tab]')].map(t=>t.dataset.settingsTab))===JSON.stringify(['general','hotkeys','about'])")
+        assert js("!$('openDataFolder').disabled")
+        js("hostMessages.length=0; $('openDataFolder').click()")
+        assert js("JSON.stringify(hostMessages)===JSON.stringify(['open-data-folder']) && $('settings').open")
+        js("$('settingsTabHotkeys').click()")
+        assert js("!$('settingsHotkeys').hidden && $('hotkey-prev').value==='Ctrl + Alt + ←'")
         assert js("$('hotkeyForm').querySelectorAll('input').length===3 && [...$('hotkeyForm').querySelectorAll('input')].every(i=>i.readOnly)")
         assert js("!$('shortcutHint') && !$('mediaKeyHint') && !/默认媒体键|MediaPlayPause|MediaPrevious|MediaNext|VolumeUp|VolumeDown|组合键在后台/.test($('settings').textContent)")
         assert js("$('hotkeyAvailability').hidden && !$('hotkeyAvailability').textContent")
@@ -126,9 +132,11 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(lambda: js("$('saveHotkeys').disabled && playbackShortcuts.bindings()[0].key===75"))
         quiet()
         assert js("$('prev').title.includes('Ctrl + Alt + K')")
-        js('location.reload()')
-        until(lambda: js("document.getElementById('hotkey-prev') && !document.getElementById('hotkey-prev').disabled"))
+        js('window.reloadPending=true; location.reload()')
+        until(lambda: js("!window.reloadPending && document.readyState==='complete' && document.getElementById('hotkey-prev') && !document.getElementById('hotkey-prev').disabled"))
         js("$('settingsButton').click()")
+        assert js("!$('settingsGeneral').hidden")
+        js("$('settingsTabHotkeys').click()")
         assert js("$('hotkey-prev').value==='Ctrl + Alt + K'")
         quiet()
         print('OK: button-free inline editing, silent normal state, save, active fallback and reload')
@@ -211,10 +219,16 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js("!localStorage.getItem('titleBarCloseAction') && $('resetExit').disabled")
         js("$('settingsTabAbout').focus()")
         key('Home', vk=36)
+        assert js("$('settingsTabGeneral').getAttribute('aria-selected')==='true' && document.activeElement===$('settingsTabGeneral')")
+        key('ArrowRight', vk=39)
         assert js("$('settingsTabHotkeys').getAttribute('aria-selected')==='true' && document.activeElement===$('settingsTabHotkeys')")
+        key('ArrowLeft', vk=37)
+        assert js("$('settingsTabGeneral').getAttribute('aria-selected')==='true'")
+        key('ArrowLeft', vk=37)
+        assert js("$('settingsTabAbout').getAttribute('aria-selected')==='true'")
         geometry = """(() => { const r=$('settings').getBoundingClientRect(), body=$('settingsBody');
           return [r.x,r.y,r.width,r.height,body.clientWidth,body.clientHeight,
-            document.querySelector('.settingsHeader').getBoundingClientRect().bottom,
+            document.querySelector('#settings .sheetHeader').getBoundingClientRect().bottom,
             document.querySelector('.settingsTabs').getBoundingClientRect().bottom]; })()"""
         for width, height in [(1180, 776), (900, 650), (610, 445)]:
             cdp('Emulation.setDeviceMetricsOverride', {'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
@@ -236,10 +250,10 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
               $('hotkey-prev').scrollIntoView({block:'center'}); const r=$('hotkey-prev').getBoundingClientRect();
               return b.top>=0 && b.bottom<=innerHeight && d.scrollWidth<=d.clientWidth && r.top>=b.top && r.bottom<=b.bottom && gear.left>=aside.left && gear.right<=aside.right; })()"""), (width, height)
         js("$('settingsTabAbout').click(); $('settingsBody').scrollTop=0")
-        chrome = js("['.settingsHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})")
+        chrome = js("['#settings .sheetHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})")
         js("$('settingsBody').scrollTop=$('settingsBody').scrollHeight")
         assert js("$('settingsBody').scrollTop>0 && $('settings').scrollTop===0")
-        assert js("['.settingsHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})") == chrome
+        assert js("['#settings .sheetHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})") == chrome
         assert js("getComputedStyle($('settings')).overflowY==='hidden' && getComputedStyle($('settingsBody'),'::-webkit-scrollbar').width==='4px' && getComputedStyle($('settingsBody'),'::-webkit-scrollbar-button').display==='none'")
         if args.screenshot:
             cdp('Emulation.setDeviceMetricsOverride', {'width': 1180, 'height': 776, 'deviceScaleFactor': 1, 'mobile': False})
@@ -247,8 +261,14 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             output = Path(args.screenshot)
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(base64.b64decode(cdp('Page.captureScreenshot', {'format': 'png'})['data']))
-        print('OK: close discards drafts, nested About, general preferences and keyboard tabs')
+        print('OK: close discards drafts, nested About, general-first default, data-folder command and keyboard tabs')
         print('OK: fixed dialog/body/header geometry across all tabs and download states at 3 viewport sizes; inset scrolling only')
+        cdp('Page.addScriptToEvaluateOnNewDocument', {'source': 'delete window.chrome.webview;'})
+        js('window.reloadPending=true; location.reload()')
+        until(lambda: js("!window.reloadPending && document.readyState==='complete' && document.getElementById('openDataFolder') && !!document.getElementById('settingsButton').onclick"))
+        js("$('settingsButton').click(); hostMessages.length=0; $('openDataFolder').click()")
+        assert js("!$('settingsGeneral').hidden && $('openDataFolder').disabled && hostMessages.length===0")
+        print('OK: browser-only preview disables the native data-folder action')
     finally:
         if ws:
             try:

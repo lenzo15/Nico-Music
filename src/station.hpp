@@ -363,12 +363,15 @@ public:
         p.command({"set", "pause", "no"});
         cursor = i;
     }
-    void play(int i)
+    void play(int i, bool newestFirst = false)
     {
         if (i < 0 || i >= count())
             throw std::runtime_error("没有这首歌，请查看歌单编号");
         std::vector<int> order(count());
-        std::iota(order.begin(), order.end(), 0);
+        if (newestFirst)
+            std::iota(order.rbegin(), order.rend(), 0);
+        else
+            std::iota(order.begin(), order.end(), 0);
         playSelection(i, order, true);
     }
     bool beginCollection(const string &args) {
@@ -518,23 +521,27 @@ public:
     {
         if (urls.empty())
             throw std::runtime_error("未选择音乐");
-        std::vector<int> remap(count(), -1);
         std::vector<Track> kept;
-        for (int i = 0; i < count(); ++i)
-        {
-            if (urls.count(tracks[i].url))
-                continue;
-            remap[i] = static_cast<int>(kept.size());
-            kept.push_back(tracks[i]);
-        }
+        for (const auto& track : tracks)
+            if (!urls.count(track.url)) kept.push_back(track);
         if (tracks.size() - kept.size() != urls.size())
             throw std::runtime_error("音乐库已变化，请重新选择曲目");
+        replaceLibrary(kept);
+    }
+    void replaceLibrary(std::vector<Track> replacement)
+    {
+        std::unordered_map<string, int> indices;
+        for (int i = 0; i < static_cast<int>(replacement.size()); ++i)
+            if (!indices.emplace(replacement[i].url, i).second)
+                throw std::runtime_error("音乐库包含重复曲目");
+        std::vector<int> remap(count(), -1);
+        for (int i = 0; i < count(); ++i)
+            if (auto found = indices.find(tracks[i].url); found != indices.end()) remap[i] = found->second;
         bool mirrored = queueValid && player && player->integer("playlist-count") == queueSize();
-        save(kept); // Commit all removals together before changing the playing queue.
-        tracks.swap(kept);
+        save(replacement); // Persist once; no in-memory or queue change on disk failure.
+        tracks.swap(replacement);
         metadataQueue.erase(std::remove_if(metadataQueue.begin(), metadataQueue.end(),
-                                           [&](const string &url)
-                                           { return urls.count(url) != 0; }),
+                                           [&](const string &url) { return !indices.count(url); }),
                             metadataQueue.end());
         cursor = 0;
         queueValid = false;
@@ -555,12 +562,18 @@ public:
             }
             catch (...)
             {
-                stop();
-                throw;
+                // The edit is already durable. A queue failure must not hide it from undo.
+                try { player->command({"stop"}); } catch (...) {}
+                queueValid = false;
+                queue.clear();
             }
         }
-        else if (player)
-            stop();
+        else if (player) {
+            try { player->command({"stop"}); } catch (...) {}
+            queue.clear();
+        }
+        for (const auto& track : tracks)
+            if (!track.thumbnail) queueMetadata(track.url);
     }
     int lastIndex() const { return cursor; }
 };

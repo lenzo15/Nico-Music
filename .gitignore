@@ -16,6 +16,9 @@ cmake_install.cmake
 *.ilk
 *.res
 
+# Local design notes and references (not project documentation)
+/.docs/
+
 # Machine-specific IDE settings
 .vs/
 *.vcxproj.user

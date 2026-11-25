@@ -56,15 +56,31 @@ let state = {
 try {
   fav = new Set(JSON.parse(localStorage.getItem("likes") || "[]"));
 } catch {}
+let editHistory = null, pendingMutation = false, nativeHistoryRequest = null;
 function send(message) {
-  if (bridge) bridge.postMessage(message);
-  else toast("请在 NicoMusic 桌面窗口中播放");
+  const mutation = /^(add|start|remove|removeurls)\s/.test(message);
+  if (mutation && (editHistory?.busy || pendingMutation)) {
+    toast("请等待当前操作完成"); return false;
+  }
+  if (bridge) {
+    if (mutation) { pendingMutation = true; editHistory?.refresh(); }
+    bridge.postMessage(message); return true;
+  }
+  toast("请在 NicoMusic 桌面窗口中播放"); return false;
 }
-function toast(s) {
-  $("toast").textContent = s;
-  $("toast").classList.add("show");
+function toast(s, action = null) {
+  const el = $("toast");
+  el.replaceChildren();
+  const text = document.createElement("span"); text.textContent = s; el.append(text);
+  if (action) {
+    const button = document.createElement("button");
+    button.type = "button"; button.textContent = action.label;
+    button.onclick = () => { el.classList.remove("show"); action.run(); };
+    el.append(button);
+  }
+  el.classList.add("show");
   clearTimeout(timer);
-  timer = setTimeout(() => $("toast").classList.remove("show"), 3500);
+  timer = setTimeout(() => el.classList.remove("show"), action ? 6500 : 3500);
 }
 function btn(label, glyph, action) {
   const el = document.createElement("button");
@@ -79,6 +95,28 @@ let lists;
 try { lists = new PlaylistStore(localStorage); }
 catch { toast("无法读取自建歌单"); }
 const currentList = () => lists?.find(page);
+function membershipSnapshot() {
+  return {likes: [...fav], lists: (lists?.items || []).map(list => ({...list, urls: [...list.urls]}))};
+}
+function restoreMembership(next) {
+  const valid = new Set(tracks.map(track => track.url));
+  next = {likes: next.likes.filter(url => valid.has(url)),
+    lists: next.lists.map(list => ({...list, urls: list.urls.filter(url => valid.has(url))}))};
+  const oldLikes = localStorage.getItem("likes");
+  const likesChanged = JSON.stringify([...fav]) !== JSON.stringify(next.likes);
+  try {
+    if (likesChanged) localStorage.setItem("likes", JSON.stringify(next.likes));
+    if (lists && JSON.stringify(lists.items) !== JSON.stringify(next.lists)) lists.commit(next.lists);
+  } catch (error) {
+    if (likesChanged) {
+      try { if (oldLikes === null) localStorage.removeItem("likes"); else localStorage.setItem("likes", oldLikes); }
+      catch { throw Error("无法保存或恢复收藏，请检查磁盘空间"); }
+    }
+    throw Error("无法保存歌单或收藏，操作未完成");
+  }
+  fav = new Set(next.likes);
+  rowSignature = ""; refreshListNav(); sync();
+}
 function refreshListNav() {
   const nav = $("listNav");
   nav.replaceChildren();
@@ -196,6 +234,7 @@ async function reviewCollection(preview) {
   send(`collection-decision ${preview.id} ${accepted ? "accept" : "cancel"}`);
   if (!accepted && request === pendingImport) {
     pendingImport = null;
+    pendingMutation = false; editHistory?.refresh();
     $("importStatus").hidden = true;
   }
 }
@@ -276,7 +315,7 @@ $("addForm").onsubmit = (e) => {
   const command = `${e.submitter?.value === "add" ? "add" : "start"} ${url} ${$("name").value.trim()}`;
   if (new TextEncoder().encode(command).length > 12000) return toast("链接或曲名过长");
   if (bridge) pendingImport = {page, url};
-  send(command);
+  if (!send(command)) pendingImport = null;
 };
 $("url").oninput = () => $("url").setCustomValidity("");
 $("projectLink").onclick = (e) => {
@@ -367,11 +406,12 @@ function pageOrder() {
 }
 function defaultPageOrder() {
   const list = currentList();
-  if (list) {
-    const indices = new Map(tracks.map((t, i) => [t.url, i]));
-    return list.urls.map(u => indices.get(u)).filter(i => i !== undefined);
-  }
-  return tracks.flatMap((t, i) => page !== "likes" || fav.has(t.url) ? [i] : []);
+  const members = list ? new Set(list.urls) : page === "likes" ? fav : null;
+  // The native library appends on first import. Keep its indices intact for playback/removal.
+  const order = [];
+  for (let i = tracks.length - 1; i >= 0; --i)
+    if (!members || members.has(tracks[i].url)) order.push(i);
+  return order;
 }
 function playFromPage(i) {
   if (page === "library" && !trackOrder.has(page)) send("play " + i);
@@ -453,8 +493,11 @@ $("batchFav").onclick = () => {
 function removeFromPlaylist(urls) {
   const list = currentList();
   if (!list) return false;
+  if (editHistory.busy || pendingMutation) { toast("请等待当前操作完成"); return false; }
+  const before = membershipSnapshot();
   try { lists.removeSongs(list.id, urls); }
   catch { toast("移出歌单失败"); return false; }
+  editHistory.record({label: `从歌单移出歌曲（${urls.size} 首）`, before});
   rowSignature = "";
   return true;
 }
@@ -563,7 +606,7 @@ function renderRows() {
       row.append(btn("从音乐库移除", "trash", () => send("remove " + i)));
     else if (currentList())
       row.append(btn("从当前歌单移除", "trash", () => {
-        if (removeFromPlaylist(new Set([t.url]))) { sync(); toast("已从当前歌单移除"); }
+        if (removeFromPlaylist(new Set([t.url]))) sync();
       }));
   });
   if (!$("rows").childElementCount) {
@@ -598,9 +641,10 @@ for (const id of ["volume", "seek"]) {
   el.onpointerup = el.onpointercancel = el.onblur = () => drag.delete(id);
   el.oninput = () => {
     el.style.setProperty("--fill", (100 * el.value) / el.max + "%");
-    if (id === "seek") $("elapsed").textContent = time(el.value);
+    if (id === "volume") send(`volume ${el.value}`);
+    else $("elapsed").textContent = time(el.value);
   };
-  el.onchange = () => send(`${id} ${el.value}`);
+  if (id === "seek") el.onchange = () => send(`seek ${el.value}`);
 }
 $("mute").onclick = () => {
   if (state.volume > 0) lastVolume = state.volume;
@@ -630,6 +674,12 @@ reduceMotion.addEventListener("change", layoutTitle);
 const focusView = createFocusView();
 function sync() {
   const t = current();
+  const playing = !!t && !!state.playing && !state.paused;
+  $("sidebarStatusArea").dataset.playing = String(playing);
+  const sidebarStatus = t
+    ? state.paused ? "已暂停" : playing ? "正在播放" : state.elapsed < 0 ? "正在载入…" : "已停止"
+    : librarySize() ? `${librarySize()} 首音乐` : "随心听好音乐";
+  if ($("sidebarStatus").textContent !== sidebarStatus) $("sidebarStatus").textContent = sidebarStatus;
   const displayTitle = t
     ? t.name === t.url && state.title
       ? state.title
@@ -673,10 +723,36 @@ function sync() {
 }
 const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
 const appSettings = createSettings({shortcuts: playbackShortcuts, send, notify: toast, desktop: !!bridge});
+editHistory = createEditHistory({storage: localStorage, snapshot: membershipSnapshot, restore: restoreMembership,
+  blocked: () => pendingMutation || !!pendingImport,
+  applyNative: (id, direction) => new Promise((resolve, reject) => {
+    nativeHistoryRequest = {id, direction, resolve, reject};
+    send(`history-apply ${id} ${direction}`);
+  }),
+  notify: toast,
+  changed: history => {
+    $("undoEdit").disabled = !history.canUndo;
+    $("redoEdit").disabled = !history.canRedo;
+    $("editNotices").checked = history.notices;
+  }});
+$("undoEdit").onclick = () => editHistory.undo();
+$("redoEdit").onclick = () => editHistory.redo();
+$("editNotices").onchange = e => {
+  if (!editHistory.setNotices(e.target.checked)) e.target.checked = editHistory.notices;
+  if (!editHistory.notices) $("toast").classList.remove("show");
+};
+document.addEventListener("keydown", event => {
+  const direction = historyShortcut(event, !!document.querySelector("dialog[open]"));
+  if (!direction) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  if (!event.repeat) editHistory[direction]();
+}, true);
 const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridge,
   storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
+  const editBefore = msg.libraryEdit ? membershipSnapshot() : null;
+  if (msg.libraryEdit || msg.imported || msg.importFailed || msg.error && !msg.collectionPending) pendingMutation = false;
   if (updateChecker.message(msg)) return;
   if (playbackShortcuts.message(msg)) { appSettings.message(msg); return; }
   if ("localPath" in msg) {
@@ -698,12 +774,14 @@ bridge?.addEventListener("message", (e) => {
     tracks = msg.tracks;
     hiddenTrackCount = tracks.reduce((n, t) => n + (t.hidden ? 1 : 0), 0);
     const valid = new Set(tracks.map(t => t.url));
-    try {
-      lists?.prune(valid);
-      const kept = [...fav].filter(u => valid.has(u));
-      if (kept.length !== fav.size) { localStorage.setItem("likes", JSON.stringify(kept)); fav = new Set(kept); }
+    if (!msg.historyResult) {
+      try {
+        lists?.prune(valid);
+        const kept = [...fav].filter(u => valid.has(u));
+        if (kept.length !== fav.size) { localStorage.setItem("likes", JSON.stringify(kept)); fav = new Set(kept); }
+      }
+      catch { toast("歌单更新失败"); }
     }
-    catch { toast("歌单更新失败"); }
   }
   if (msg.collectionPreview) reviewCollection(msg.collectionPreview);
   if (msg.collectionPending && pendingImport) pendingImport.collection = true;
@@ -738,9 +816,26 @@ bridge?.addEventListener("message", (e) => {
       select(page);
     }
     if (notice && msg.importedUrls) notice += `（${urls.length} 首）`;
-    if (msg.error || notice) toast([notice, msg.error].filter(Boolean).join("；"));
+    if (msg.error || notice.includes("但无法")) toast([notice, msg.error].filter(Boolean).join("；"));
+    else if (!msg.libraryEdit && editHistory.notices) toast(notice);
+  }
+  if (msg.libraryEdit) {
+    const edit = msg.libraryEdit;
+    const label = edit.kind === "delete" ? "删除歌曲" : edit.kind === "collection" ? "导入歌单" : "导入音乐";
+    const after = membershipSnapshot(), valid = new Set(tracks.map(track => track.url));
+    after.likes = after.likes.filter(url => valid.has(url));
+    after.lists = after.lists.map(list => ({...list, urls: list.urls.filter(url => valid.has(url))}));
+    editHistory.record({label: `${label}（${edit.count} 首）`, nativeId: edit.id, before: editBefore, after});
+    if (msg.error) toast(msg.error); // Error messages are never suppressed by the preference.
   }
   sync();
+  editHistory.refresh();
+  if (msg.historyResult && nativeHistoryRequest && msg.historyResult.id === nativeHistoryRequest.id &&
+      msg.historyResult.direction === nativeHistoryRequest.direction) {
+    const request = nativeHistoryRequest; nativeHistoryRequest = null;
+    if (msg.historyResult.ok) request.resolve();
+    else request.reject(Error(msg.historyResult.error || "撤销操作失败"));
+  }
 });
 sync();
 if (bridge) {

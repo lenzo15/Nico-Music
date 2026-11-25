@@ -37,6 +37,7 @@ int main() {
             require(!validHotkey({MOD_CONTROL, static_cast<UINT>(key)}), "fixed/reserved key accepted");
         require(!validHotkey({MOD_SHIFT, 'K'}) && !validHotkey({MOD_WIN, 'K'}), "unsafe modifiers accepted");
         require(!validHotkey({MOD_ALT, VK_F4}) && !validHotkey({MOD_CONTROL | MOD_ALT, VK_DELETE}), "reserved combination accepted");
+        require(!validHotkey({MOD_CONTROL, 'Z'}) && !validHotkey({MOD_CONTROL, 'Y'}), "edit history chord accepted as a global transport key");
         require(validHotkey({0, 0}) && !validHotkey({MOD_CONTROL, 0}), "disabled binding validation failed");
         Registry registry;
         const auto add = [&](int id, const HotkeyBinding& b) { return registry.add(id, b); };

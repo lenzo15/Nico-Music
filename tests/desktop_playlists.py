@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             else:
                 w.writeframes(bytes(16000 * (2 if name == 'A' else 24)))
     (profile / 'library.tsv').write_text(''.join(
-        f'http://127.0.0.1:{server.server_port}/{n}.wav\t{n}\t\n' for n in 'ABC'), encoding='utf8')
+        f'http://127.0.0.1:{server.server_port}/{n}.wav\t{n}\t\n' for n in 'CBA'), encoding='utf8')
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
@@ -102,9 +102,21 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         def js(expr):
             return cdp('Runtime.evaluate', {'expression': expr, 'returnByValue': True})['result'].get('value')
         until(lambda: js('document.querySelectorAll(".row").length===3'))
+        # Persisted import order C,B,A is displayed newest first, without changing native IDs.
+        assert js("[...document.querySelectorAll('.row strong')].map(n => n.textContent).join(',') === 'A,B,C'")
+        # state.volume comes from mpv: verify the engine follows each input
+        # before pointerup/change rather than just painting the slider's fill.
+        js("$('volume').dispatchEvent(new PointerEvent('pointerdown'))")
+        for value in (35, 0, 70):
+            js(f"$('volume').value={value}; $('volume').dispatchEvent(new Event('input'))")
+            until(lambda: js(f"drag.has('volume') && state.volume==={value}"))
+        js("$('volume').dispatchEvent(new PointerEvent('pointerup'))")
+        print('OK: player volume follows slider input before release')
         js("$('viewQueue').click()")
         assert js("$('queueDialog').matches(':modal') && !$('queueEmpty').hidden && !$('queueItems').childElementCount")
         js("$('queueDialog').querySelector('.close').click()")
+        js("document.querySelector('.rowText').click()")
+        until(lambda: js("state.index===2 && state.queue.join(',')==='2,1,0'"))
         js("$('newList').click()")
         assert js("!$('listForm').querySelector('input[type=checkbox]') && !$('editList')")
         js("$('listName').value='Morning'; $('listForm').requestSubmit()")

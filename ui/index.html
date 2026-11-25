@@ -16,6 +16,7 @@
     <script defer src="hotkey-bindings.js"></script>
     <script defer src="shortcuts.js"></script>
     <script defer src="settings.js"></script>
+    <script defer src="edit-history.js"></script>
     <script defer src="updates.js"></script>
     <script defer src="collection-confirm.js"></script>
     <script defer src="app.js"></script>
@@ -45,8 +46,12 @@
           <div class="navlabel sourceLabel">来源</div>
           <div id="sources"></div>
         </section>
-        <div class="asideEnd">
-          <span class="eq"><b></b><b></b><b></b><b></b></span>
+        <div class="asideEnd" id="sidebarStatusArea">
+          <span class="eq" aria-hidden="true"><b></b><b></b><b></b><b></b></span>
+          <span class="asideIdentity">
+            <strong>NicoMusic</strong>
+            <small id="sidebarStatus" role="status" aria-live="polite" aria-atomic="true">随心听好音乐</small>
+          </span>
           <button
             class="icon"
             id="settingsButton"
@@ -181,11 +186,15 @@
         </button>
       </div>
     </footer>
-    <dialog id="queueDialog" aria-labelledby="queueTitle">
-      <button type="button" class="close icon" aria-label="关闭播放列表" autofocus><i data-icon="close"></i></button>
-      <h2 id="queueTitle">播放列表 <small id="queueCount"></small></h2>
-      <p id="queueEmpty">暂无播放队列，请先点播一首歌。</p>
-      <ol id="queueItems"></ol>
+    <dialog id="queueDialog" class="sheet" aria-labelledby="queueTitle">
+      <header class="sheetHeader">
+        <h2 id="queueTitle">播放列表 <small id="queueCount"></small></h2>
+        <button type="button" class="close icon" aria-label="关闭播放列表" autofocus><i data-icon="close"></i></button>
+      </header>
+      <div class="sheetCard queueCard">
+        <p id="queueEmpty">暂无播放队列，请先点播一首歌。</p>
+        <ol id="queueItems"></ol>
+      </div>
     </dialog>
     <dialog id="exitDialog" aria-labelledby="exitTitle" aria-describedby="exitHint">
       <form id="exitForm">
@@ -224,25 +233,28 @@
         <div class="actions"><button id="createWithSong" class="subtle" type="button">新建歌单</button><button id="applyLists" class="primary">保存</button></div>
       </form>
     </dialog>
-    <dialog id="addDialog" aria-label="添加音乐">
+    <dialog id="addDialog" class="sheet" aria-labelledby="importTitle">
       <form id="addForm">
-        <div class="importTools">
-          <button type="button" id="localDrop" title="选择本地音频文件">选择文件 <small>或将一首音乐拖到这里</small></button>
+        <header class="sheetHeader">
+          <h2 id="importTitle">导入音乐</h2>
           <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
+        </header>
+        <div class="sheetCard importFields">
+          <button type="button" id="localDrop" title="选择本地音频文件">选择文件 <small>或将一首音乐拖到这里</small></button>
+          <input type="file" id="localFile" accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
+          <p id="importStatus" role="status" hidden>正在读取合集，请稍候…</p>
+          <label
+            >链接或本地路径<input
+              id="url"
+              type="text"
+              placeholder="歌曲链接、合集链接或本地路径"
+              required
+              maxlength="8192" /></label
+          ><label
+            >曲名 <small>选填</small
+            ><input id="name" maxlength="180" placeholder="留空使用原曲名或文件名"
+          /></label>
         </div>
-        <input type="file" id="localFile" accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
-        <p id="importStatus" role="status" hidden>正在读取合集，请稍候…</p>
-        <label
-          >链接或本地路径<input
-            id="url"
-            type="text"
-            placeholder="歌曲链接、合集链接或本地路径"
-            required
-            maxlength="8192" /></label
-        ><label
-          >曲名 <small>选填</small
-          ><input id="name" maxlength="180" placeholder="留空使用原曲名或文件名"
-        /></label>
         <div class="actions">
           <button class="subtle" value="add">仅加入歌单</button
           ><button class="primary" value="start">
@@ -251,19 +263,37 @@
         </div>
       </form>
     </dialog>
-    <dialog id="settings" aria-labelledby="settingsTitle">
+    <dialog id="settings" class="sheet" aria-labelledby="settingsTitle">
       <div class="settingsFrame">
-      <header class="settingsHeader">
+      <header class="sheetHeader">
         <h2 id="settingsTitle">设置</h2>
         <button class="close icon" aria-label="关闭设置"><i data-icon="close"></i></button>
       </header>
       <div class="settingsTabs" role="tablist" aria-label="设置分类">
-        <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="true" aria-controls="settingsHotkeys">热键</button>
-        <button type="button" id="settingsTabGeneral" data-settings-tab="general" role="tab" aria-selected="false" aria-controls="settingsGeneral" tabindex="-1">常规</button>
+        <button type="button" id="settingsTabGeneral" data-settings-tab="general" role="tab" aria-selected="true" aria-controls="settingsGeneral">常规</button>
+        <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="false" aria-controls="settingsHotkeys" tabindex="-1">热键</button>
         <button type="button" id="settingsTabAbout" data-settings-tab="about" role="tab" aria-selected="false" aria-controls="about" tabindex="-1">关于</button>
       </div>
       <div id="settingsBody" class="settingsBody">
-      <section id="settingsHotkeys" role="tabpanel" aria-labelledby="settingsTabHotkeys">
+      <section id="settingsGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
+        <section class="generalSection" aria-labelledby="dataFolderTitle">
+          <h3 id="dataFolderTitle">本地数据</h3>
+          <p>音乐库、自建歌单、收藏及设置保存在数据文件夹中。完整备份前，请先退出播放器。</p>
+          <button type="button" id="openDataFolder" class="subtle" disabled>打开数据文件夹</button>
+        </section>
+        <section class="generalSection" aria-labelledby="editHistoryTitle">
+          <h3 id="editHistoryTitle">操作提示与撤销</h3>
+          <label class="autoUpdate"><input type="checkbox" id="editNotices" checked />显示导入和删除操作提示</label>
+          <p>关闭后仍可使用 Ctrl+Z 撤销、Ctrl+Y 重做。每批操作为一步，本次会话最多保留 50 步；不会删除本地音频文件。</p>
+          <div class="settingsActions"><button type="button" id="undoEdit" class="subtle" disabled>撤销（Ctrl+Z）</button><button type="button" id="redoEdit" class="subtle" disabled>重做（Ctrl+Y）</button></div>
+        </section>
+        <section class="generalSection" aria-labelledby="closeWindowTitle">
+          <h3 id="closeWindowTitle">关闭窗口</h3>
+          <p>清除已记住的关闭方式，下次关闭时重新询问收起到托盘或退出。</p>
+          <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
+        </section>
+      </section>
+      <section id="settingsHotkeys" role="tabpanel" aria-labelledby="settingsTabHotkeys" hidden>
         <h3 class="settingsSectionTitle">播放控制</h3>
         <form id="hotkeyForm">
           <div class="hotkeyGroup">
@@ -275,11 +305,6 @@
           <p id="hotkeyAvailability" class="settingsNotice" role="status" aria-live="polite" hidden></p>
           <div class="settingsActions"><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button></div>
         </form>
-      </section>
-      <section id="settingsGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" hidden>
-        <h3>关闭窗口</h3>
-        <p>清除已记住的关闭方式，下次关闭时重新询问收起到托盘或退出。</p>
-        <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
       </section>
       <section id="about" role="tabpanel" aria-labelledby="settingsTabAbout" hidden>
       <h3>关于 NicoMusic</h3>
