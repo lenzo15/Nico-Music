@@ -258,24 +258,24 @@ void updatePromptResult(const string& phase, const string& error = {}) {
     const auto json = "{\"updater\":{\"phase\":" + quotedJson(phase) + ",\"error\":" + quotedJson(error) + "}}";
     view->PostWebMessageAsJson(wide(json).c_str());
 }
-string collectionMode;
-void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false) {
+string collectionMode, collectionSource;
+std::vector<Track> collectionPreview;
+uint64_t collectionId = 0;
+void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false,
+             std::vector<int> importedTracks = {}) {
     if (!view || !ready)
         return;
     auto audioError = station->errors(&library);
-    std::vector<int> importedTracks;
-    if (!collectionMode.empty()) {
+    bool showPreview = false;
+    if (!collectionMode.empty() && collectionPreview.empty()) {
         try {
-            if (auto order = station->finishCollection()) {
-                importedTracks = std::move(*order);
-                imported = collectionMode;
-                collectionMode.clear();
-                library = true;
-                if (imported == "start") station->playSelection(importedTracks.front(), importedTracks);
+            if (auto preview = station->previewCollection()) {
+                collectionPreview = std::move(*preview);
+                showPreview = true;
             }
         } catch (const std::exception &e) {
             collectionMode.clear();
-            importFailed = imported.empty(); // Playback can fail after a successful library commit.
+            importFailed = true;
             err = e.what();
         }
     }
@@ -342,6 +342,9 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
     if (!err.empty())
         data += ",\"error\":" + quotedJson(err);
     if (!collectionMode.empty()) data += ",\"collectionPending\":true";
+    if (showPreview) data += ",\"collectionPreview\":{\"id\":" + quotedJson(std::to_string(collectionId)) +
+        ",\"source\":" + quotedJson(collectionSource) + ",\"count\":" + std::to_string(collectionPreview.size()) +
+        ",\"play\":" + (collectionMode == "start" ? "true}" : "false}");
     if (importFailed) data += ",\"importFailed\":true";
     if (!importedTracks.empty()) {
         data += ",\"importedUrls\":[";
@@ -448,7 +451,31 @@ void handle(const string &message) {
             }
             return;
         }
+        if (cmd == "collection-decision") {
+            const auto [id, choice] = split(arg);
+            if (id != std::to_string(collectionId) || collectionPreview.empty() ||
+                (choice != "accept" && choice != "cancel")) return;
+            auto songs = std::move(collectionPreview);
+            collectionPreview.clear();
+            const string mode = collectionMode;
+            collectionMode.clear();
+            if (choice == "cancel") return;
+            auto order = station->commitCollection(songs);
+            string playbackError;
+            if (mode == "start") {
+                try { station->playSelection(order.front(), order); }
+                catch (const std::exception& e) { playbackError = e.what(); }
+            }
+            publish(true, playbackError, mode, false, false, std::move(order));
+            return;
+        }
         if (cmd == "ready") {
+            // A reloaded page cannot confirm an old preview.
+            if (!collectionMode.empty()) {
+                station->engine().discardCollection();
+                collectionPreview.clear();
+                collectionMode.clear();
+            }
             stopMeter();
             if (!ready) station->queueMissingCovers();
             ready = true;
@@ -462,6 +489,8 @@ void handle(const string &message) {
             if (!collectionMode.empty()) throw std::runtime_error("正在导入另一个合集");
             if (station->beginCollection(arg)) {
                 collectionMode = cmd;
+                ++collectionId;
+                collectionSource = station->providers().match(split(arg).first)->id;
                 publish(false);
                 return;
             }
@@ -520,7 +549,7 @@ void handle(const string &message) {
         }
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
-        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start");
+        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision");
     }
 }
 void resize() {
@@ -554,6 +583,12 @@ HRESULT setup(ICoreWebView2Controller *c) {
                                               COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
     if (FAILED(hr))
         return hr;
+    for (const auto& source : station->providers().all()) {
+        if (source.collectionPaths.empty()) continue;
+        auto host = wide(source.id + ".collection.bilimusic.local");
+        v3->SetVirtualHostNameToFolderMapping(host.c_str(), (source.folder / L"confirm").c_str(),
+                                              COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+    }
     for (const auto& preset : findFocusPresets(appDir() / L"plugins")) {
         auto host = wide(preset.id + ".focus.bilimusic.local");
         if (SUCCEEDED(v3->SetVirtualHostNameToFolderMapping(host.c_str(), preset.folder.c_str(),

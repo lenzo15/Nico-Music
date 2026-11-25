@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>导入哔哩哔哩合集</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; display: flex; flex-direction: column; text-align: center;
+      color: #26252b; background: #fcfbfc; font: 14px/1.5 "Segoe UI","Microsoft YaHei UI",sans-serif; }
+    main { flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 12px; }
+    small { color: #a43554; font-weight: 600; }
+    h1 { font-size: 18px; margin: 4px 0 6px; }
+    p { margin: 0; color: #68656c; overflow-wrap: anywhere; }
+    footer { display: flex; border-top: 1px solid #e5e1e5; }
+    button { flex: 1; min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    button + button { border-left: 1px solid #e5e1e5; color: #af3047; font-weight: 600; }
+    button:hover { background: #76768012; }
+    button:focus-visible { outline: 2px solid #c64b63; outline-offset: -4px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <main><small>哔哩哔哩</small><h1>导入这个合集？</h1><p id="summary" aria-live="polite"></p></main>
+  <footer><button id="cancel">取消</button><button id="accept" disabled>导入</button></footer>
+  <script>
+    const host = "https://studio.bilimusic.local";
+    const send = action => parent.postMessage("collection-" + action, host);
+    window.addEventListener("message", e => {
+      if (e.source !== parent || e.origin !== host || e.data?.type !== "collection-preview") return;
+      const {count, destination, play} = e.data;
+      document.querySelector("#summary").textContent = `将 ${count} 首歌曲加入「${destination}」${play ? "，并从第一首开始播放" : ""}。`;
+      const accept = document.querySelector("#accept");
+      accept.disabled = false;
+      accept.textContent = play ? "导入并播放" : "确认导入";
+      document.querySelector("#cancel").focus();
+    });
+    document.querySelector("#cancel").onclick = () => send("cancel");
+    document.querySelector("#accept").onclick = () => send("accept");
+    window.onkeydown = e => { if (e.key === "Escape") { e.preventDefault(); send("cancel"); } };
+    send("ready");
+  </script>
+</body>
+</html>

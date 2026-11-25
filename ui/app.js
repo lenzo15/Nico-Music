@@ -182,6 +182,23 @@ document
   .querySelectorAll("[data-page]")
   .forEach((b) => (b.onclick = () => select(b.dataset.page)));
 let pendingImport = null;
+async function reviewCollection(preview) {
+  const request = pendingImport;
+  let accepted = false;
+  try {
+    if (request && $("addDialog").open) {
+      const destination = request.page === "library" ? "全部音乐" :
+        request.page === "likes" ? "我喜欢的" : lists?.find(request.page)?.name;
+      if (destination) accepted = await confirmPluginCollection(preview, destination);
+    }
+  } catch (err) { toast(err.message || "无法显示音源确认界面"); }
+  accepted = accepted && request === pendingImport && $("addDialog").open;
+  send(`collection-decision ${preview.id} ${accepted ? "accept" : "cancel"}`);
+  if (!accepted && request === pendingImport) {
+    pendingImport = null;
+    $("importStatus").hidden = true;
+  }
+}
 function addDialog() {
   if (pendingImport) return toast("正在添加音乐");
   const d = $("addDialog");
@@ -666,6 +683,7 @@ bridge?.addEventListener("message", (e) => {
     }
     catch { toast("歌单更新失败"); }
   }
+  if (msg.collectionPreview) reviewCollection(msg.collectionPreview);
   if (msg.collectionPending && pendingImport) pendingImport.collection = true;
   $("importStatus").hidden = !(pendingImport?.collection && !msg.imported && !msg.importFailed);
   if (msg.error && !msg.imported) {

@@ -59,7 +59,9 @@ file_extensions=.bmlink
 
 - 命中后宿主发送 `script-message bm-collection <token> <带前缀的合集链接>`。只处理属于本来源的前缀。
 - 返回一次 `script-message bm-collection-result <token> <rows> <error>`。成功时 error 为空，rows 是一个字符串参数：每行 `原始 HTTP(S) 曲目链接<TAB>标题`（标题可为空），行间用 LF 分隔。不要返回临时播放地址；标题中的控制符须替换为空格。失败时 rows 为空，error 为简短的错误说明。
-- 最多 500 条、1 MiB，60 秒超时。宿主校验整批，拒绝空列表、不受支持的链接和嵌套合集；按返回顺序去重，一次保存到音乐库。已有歌曲也会加入本次的目标歌单或收藏。“加入并播放”使用本次导入顺序。曲名输入仅适用于单曲。
+- 最多 500 条、1 MiB，60 秒超时。宿主校验整批，拒绝空列表、不受支持的链接和嵌套合集；按返回顺序去重生成只读预览。只有用户明确确认后，才一次保存到音乐库。已有歌曲也会加入本次的目标歌单或收藏。“加入并播放”使用本次导入顺序。曲名输入仅适用于单曲。
+- 桌面确认界面由来源包内的 **`confirm/index.html`** 管理，示例见 [B 站确认页](../plugins/bilibili/confirm/index.html)。它运行在只允许脚本的沙箱 iframe 中，无音乐库或原生桥权限。插件自行设计内容、确认和取消按钮，不要调用浏览器的 `confirm()`。
+- 确认页向父窗口 `https://studio.bilimusic.local` 发送 `collection-ready`；校验父窗口和来源后接收 `{type:"collection-preview", count, destination, play}`，用纯文本显示用户数据。用户决定后发 `collection-accept` 或 `collection-cancel`，Esc 应取消。宿主只接受当前确认页的一次决定；取消、关闭、确认页缺失或未就绪都不入库。CLI 无网页窗口，使用等价的 `[y/N]` 确认。原有插件须补齐确认页才能在桌面导入合集，单曲不受影响。
 - 测试：`python tests/collection_import.py build/Release/NicoMusicCLI.exe` 使用临时插件和数据目录，不访问网络。
 
 CLI 输入 `sources` 查看已注册来源；`open @bilibili` 打开主页，`search @bilibili 关键词` 打开搜索页。离线集成测试：`python tests/source_plugins.py build/Release/NicoMusicCLI.exe`（该测试需要旁边有完整的 `plugins/bilibili` 包）。

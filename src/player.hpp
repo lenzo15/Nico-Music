@@ -47,6 +47,7 @@ public:
     void requestMetadata(const std::string& url, const std::string& target);
     void requestCollection(const std::string& target);
     std::optional<std::string> takeCollection();
+    void discardCollection() { collectionToken.clear(); collectionReply.reset(); }
     bool metadataBusy() const { return !pendingToken.empty(); }
     std::string poll(std::vector<Metadata>& updates);
 };

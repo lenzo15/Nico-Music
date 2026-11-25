@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://*.focus.bilimusic.local; style-src 'self' 'unsafe-inline' https://*.focus.bilimusic.local; img-src 'self' https: http:; object-src 'none'; frame-src 'none'; base-uri 'none'"
+      content="default-src 'self'; script-src 'self' https://*.focus.bilimusic.local; style-src 'self' 'unsafe-inline' https://*.focus.bilimusic.local; img-src 'self' https: http:; object-src 'none'; frame-src https://*.collection.bilimusic.local; base-uri 'none'"
     />
     <title>NicoMusic · 音乐空间</title>
     <link rel="stylesheet" href="style.css" />
@@ -16,6 +16,7 @@
     <script defer src="shortcuts.js"></script>
     <script defer src="settings.js"></script>
     <script defer src="updates.js"></script>
+    <script defer src="collection-confirm.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>

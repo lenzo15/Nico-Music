@@ -377,15 +377,12 @@ public:
         engine().requestCollection(sources.route(url));
         return true;
     }
-    // Caller pumps errors() to service mpv events. Commit only a complete, valid reply.
-    std::optional<std::vector<int>> finishCollection() {
+    // Preview is detached from the live library: indices can change while the user decides.
+    std::optional<std::vector<Track>> previewCollection() {
         auto rows = engine().takeCollection();
         if (!rows) return {};
-        auto copy = tracks;
-        std::unordered_map<string, int> indices;
-        for (int i = 0; i < count(); ++i) indices.emplace(copy[i].url, i);
         std::unordered_set<string> seen;
-        std::vector<int> order;
+        std::vector<Track> preview;
         std::istringstream input(*rows);
         unsigned lines = 0;
         for (string line; std::getline(input, line);) {
@@ -395,14 +392,22 @@ public:
             if (tab == string::npos || !urlOK(url) || sources.route(url).empty() || sources.isCollection(url))
                 throw std::runtime_error("合集包含不支持的歌曲链接");
             if (!seen.insert(url).second) continue;
-            auto [it, fresh] = indices.emplace(url, static_cast<int>(copy.size()));
-            if (fresh) {
-                auto title = trim(printable(line.substr(tab + 1)));
-                copy.push_back({url, title.empty() ? url : title, std::nullopt});
-            }
+            auto title = trim(printable(line.substr(tab + 1)));
+            preview.push_back({url, title.empty() ? url : title, std::nullopt});
+        }
+        if (preview.empty()) throw std::runtime_error("合集中没有可导入的歌曲");
+        return preview;
+    }
+    std::vector<int> commitCollection(const std::vector<Track>& preview) {
+        auto copy = tracks;
+        std::unordered_map<string, int> indices;
+        for (int i = 0; i < count(); ++i) indices.emplace(copy[i].url, i);
+        std::vector<int> order;
+        for (const auto& song : preview) {
+            auto [it, fresh] = indices.emplace(song.url, static_cast<int>(copy.size()));
+            if (fresh) copy.push_back(song);
             order.push_back(it->second);
         }
-        if (order.empty()) throw std::runtime_error("合集中没有可导入的歌曲");
         const int before = count();
         if (copy.size() != tracks.size()) {
             save(copy);

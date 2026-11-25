@@ -48,9 +48,16 @@ class Terminal : public Station {
             for (;;) {
                 auto err = errors();
                 if (!err.empty()) cout << err << '\n';
-                if (auto order = finishCollection()) {
-                    cout << "合集已导入 " << order->size() << " 首\n";
-                    if (start) playSelection(order->front(), *order);
+                if (auto preview = previewCollection()) {
+                    cout << "确认导入合集中的 " << preview->size() << " 首歌曲？[y/N] " << std::flush;
+                    string answer;
+                    if (!readLine(answer) || (trim(answer) != "y" && trim(answer) != "Y")) {
+                        cout << "已取消导入。\n";
+                        return;
+                    }
+                    auto order = commitCollection(*preview);
+                    cout << "合集已导入 " << order.size() << " 首\n";
+                    if (start) playSelection(order.front(), order);
                     return;
                 }
                 Sleep(25);
