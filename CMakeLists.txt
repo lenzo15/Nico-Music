@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 # Keep this version aligned with the vX.Y.Z tag when publishing a release.
-project(NicoMusic VERSION 1.0.1 LANGUAGES CXX)
+project(NicoMusic VERSION 1.0.2 LANGUAGES CXX)
 if(NOT WIN32)
   message(FATAL_ERROR "NicoMusic targets Windows.")
 endif()
