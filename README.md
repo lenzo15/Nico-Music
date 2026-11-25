@@ -58,6 +58,8 @@ cmake --build build --config Release
 
 音乐库默认保存在 `%LOCALAPPDATA%\NicoMusic\library.tsv`。升级时沿用已有的 `%LOCALAPPDATA%\BiliMusic` 目录，保留歌单、收藏和偏好；设置 `NICOMUSIC_HOME` 可更换数据目录。验证无插件播放：`python tests/smoke.py build/Release/NicoMusicCLI.exe`；验证无插件桌面模式：`python tests/desktop_playlists.py build/Release/NicoMusic.exe --minimal`（需先退出桌面播放器并安装 `websocket-client`）。
 
+列表滚动布局回归：`python tests/collection_scroll.py`（需安装 Edge 或 Chrome 及 `websocket-client`，无头运行，不影响已打开的播放器）。
+
 快捷键回归：`node --test tests/shortcuts.js`；Windows 桌面集成：`python tests/desktop_shortcuts.py build/Release/NicoMusic.exe`，加 `--conflict` 验证全局组合键被占用时的提示与窗口内降级（需先退出桌面播放器，且组合键未被其他程序占用）。
 
 [mpv 客户端头文件](third_party/mpv/client.h) 保留原 ISC 声明；libmpv 二进制、WebView2 和插件使用的第三方工具各自遵循上游许可。

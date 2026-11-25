@@ -274,12 +274,14 @@ nav button.selected {
 }
 main {
   min-width: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #ddd9da transparent;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .topbar {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   padding: 14px clamp(24px, 3.4vw, 54px);
@@ -324,10 +326,27 @@ main {
   background: #f6f3f4;
 }
 .content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: 1390px;
-  margin: auto;
+  margin: 0 auto;
   padding: 0 clamp(24px, 3.4vw, 54px) 26px;
 }
+/* Keep the page heading and collection controls outside the list's scrollport. */
+#collection { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#rows {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #ddd9da transparent;
+}
+#rows:focus-visible { outline: 2px solid #ed99a0; outline-offset: -2px; }
 header {
   margin-bottom: 19px;
 }
@@ -858,7 +877,7 @@ aside { min-height: 0; overflow-y: auto; }
 #listNav button span, #heading, #assignTrack { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar { gap: 12px; }
 .topbar button { flex: none; }
-.collectionTools, #batchBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.collectionTools, #batchBar { display: flex; flex: none; align-items: center; gap: 10px; flex-wrap: wrap; }
 .collectionTools { justify-content: space-between; margin: 18px 0 14px; }
 .collectionTools .filter { flex: 1; min-width: 120px; margin: 0; }
 #batchToggle[aria-pressed="true"] { color: var(--red-dark); background: #fbe8ea; }

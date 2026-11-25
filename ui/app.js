@@ -165,7 +165,7 @@ function select(p) {
   $("topAdd").hidden = !!list;
   $("query").value = "";
   rowSignature = "";
-  document.querySelector("main").scrollTop = 0;
+  $("rows").scrollTop = 0;
   sync();
 }
 document
