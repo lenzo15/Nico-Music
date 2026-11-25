@@ -221,7 +221,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(lambda: js("document.readyState==='complete' && !!document.getElementById('resetExit') && !document.getElementById('resetExit').disabled"))
         js(close_button)  # remembered choice survives a new WebView document
         check_tray_restore(hwnd, until)
-        js("$('info').click(); $('resetExit').click(); $('about').querySelector('.close').click()")
+        js("$('settingsButton').click(); $('settingsTabGeneral').click(); $('resetExit').click(); $('settings').querySelector('.close').click()")
         js(close_button)
         assert js("$('exitDialog').open && $('resetExit').disabled")
         js("setTimeout(() => $('exitForm').querySelector('[value=close]').click(), 50)")

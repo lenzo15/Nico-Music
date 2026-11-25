@@ -1,11 +1,13 @@
 "use strict";
 function createPlaybackShortcuts(notify, adjustVolume) {
   const labels = {
-    prev: {label: "上一首", keys: "Ctrl + Alt + ←", media: "MediaPrevious", mediaStatus: "mediaPrev"},
-    next: {label: "下一首", keys: "Ctrl + Alt + →", media: "MediaNext", mediaStatus: "mediaNext"},
-    toggle: {label: "播放 / 暂停", keys: "Ctrl + Alt + 空格", media: "MediaPlayPause", mediaStatus: "mediaToggle"},
+    prev: {label: "上一首", media: "MediaPrevious", mediaStatus: "mediaPrev"},
+    next: {label: "下一首", media: "MediaNext", mediaStatus: "mediaNext"},
+    toggle: {label: "播放 / 暂停", media: "MediaPlayPause", mediaStatus: "mediaToggle"},
   };
   const control = id => document.getElementById(id);
+  const actions = ["prev", "next", "toggle"];
+  let bindings = defaultHotkeyBindings(), captureMode = false, lastUnavailable = "";
   // Fixed hardware bindings, independent of the combination-key shortcuts.
   const media = {MediaPlayPause: "toggle", MediaTrackPrevious: "prev", MediaPrevious: "prev",
     MediaTrackNext: "next", MediaNext: "next", VolumeUp: "volumeUp", AudioVolumeUp: "volumeUp",
@@ -16,11 +18,16 @@ function createPlaybackShortcuts(notify, adjustVolume) {
   }
   function showStatus(registered) {
     const unavailable = [], unavailableMedia = [];
-    for (const [action, {label, keys, media, mediaStatus}] of Object.entries(labels)) {
-      const scope = registered[action] ? "全局" : "仅窗口内";
+    for (const [index, action] of actions.entries()) {
+      const {label, media, mediaStatus} = labels[action], binding = bindings[index];
+      const keys = hotkeyText(binding);
+      const scope = binding.key ? registered[action] ? "全局" : "仅窗口内" : "未启用";
       const mediaScope = registered[mediaStatus] ? "全局" : "仅窗口内";
       control(action).title = `${label}（${keys}，${scope}；${media}，${mediaScope}）${action === "toggle" ? "；窗口内也可用空格" : ""}`;
-      if (!registered[action]) unavailable.push(keys);
+      const aria = [action === "toggle" ? "Space" : "", hotkeyText(binding, true),
+        {prev: "MediaTrackPrevious", next: "MediaTrackNext", toggle: "MediaPlayPause"}[action]].filter(Boolean).join(" ");
+      control(action).setAttribute("aria-keyshortcuts", aria);
+      if (binding.key && !registered[action]) unavailable.push(keys);
       if (!registered[mediaStatus]) unavailableMedia.push(media);
     }
     for (const key of ["volumeUp", "volumeDown"]) {
@@ -34,8 +41,10 @@ function createPlaybackShortcuts(notify, adjustVolume) {
     mediaHint.textContent = unavailableMedia.length
       ? `默认媒体键注册失败：${unavailableMedia.join("、")}，可能已被其他程序占用；窗口收到按键时仍可使用。`
       : "这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键每次调节播放器音量 5%，支持长按。";
-    if (unavailable.length || unavailableMedia.length)
+    const signature = [...unavailable, ...unavailableMedia].join("|");
+    if (signature && signature !== lastUnavailable)
       notify([unavailable.length ? hint.textContent : "", unavailableMedia.length ? mediaHint.textContent : ""].filter(Boolean).join(" "));
+    lastUnavailable = signature;
   }
   document.addEventListener("keydown", e => {
     if (e.defaultPrevented) return;
@@ -49,15 +58,13 @@ function createPlaybackShortcuts(notify, adjustVolume) {
         return;
       }
     }
-    if (e.isComposing) return;
-    // Registered global chords are consumed by Windows. This also provides a
-    // window-local fallback when another app owns one of the combinations.
-    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {
-      const action = {ArrowLeft: "prev", ArrowRight: "next", Space: "toggle"}[e.code];
-      if (action) {
-        e.preventDefault();
-        if (!e.repeat) run(action);
-      }
+    if (e.isComposing || captureMode) return;
+    // Registered global chords are consumed by Windows; this is the local fallback.
+    const pressed = hotkeyFromEvent(e);
+    const match = pressed && bindings.findIndex(b => b.key === pressed.key && b.modifiers === pressed.modifiers);
+    if (Number.isInteger(match) && match >= 0) {
+      e.preventDefault();
+      if (!e.repeat) run(actions[match]);
       return;
     }
     const target = e.target instanceof Element ? e.target : null;
@@ -70,10 +77,13 @@ function createPlaybackShortcuts(notify, adjustVolume) {
     }
   });
   return {
+    bindings: () => bindings.map(b => ({...b})),
     message(msg) {
       if (msg.shortcut) { run(msg.shortcut); return true; }
-      if (msg.hotkeys) { showStatus(msg.hotkeys); return true; }
-      return false;
+      if (validHotkeyBindings(msg.hotkeyConfig)) bindings = msg.hotkeyConfig.map(b => ({...b}));
+      if (typeof msg.hotkeyCapture === "boolean") captureMode = msg.hotkeyCapture;
+      if (msg.hotkeys) { if (!captureMode) showStatus(msg.hotkeys); return true; }
+      return !!msg.hotkeyConfig;
     },
   };
 }

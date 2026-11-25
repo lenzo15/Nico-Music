@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const source = fs.readFileSync(path.join(__dirname, "../ui/shortcuts.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "../ui/hotkey-bindings.js"), "utf8") + "\n" +
+  fs.readFileSync(path.join(__dirname, "../ui/shortcuts.js"), "utf8");
 
 function setup() {
   const actions = [], notices = [], volumeChanges = [], controls = {};
@@ -24,12 +25,13 @@ function setup() {
     addEventListener(type, listener) { assert.equal(type, "keydown"); keydown = listener; },
   };
   for (const id of ["prev", "next", "toggle", "volume", "shortcutHint", "mediaKeyHint"]) {
-    controls[id] = {disabled: false, click() { if (!this.disabled) actions.push(id); }};
+    controls[id] = {disabled: false, setAttribute(name, value) { this[name] = value; },
+      click() { if (!this.disabled) actions.push(id); }};
   }
   const context = vm.createContext({document, Element, notify: s => notices.push(s), adjustVolume: delta => volumeChanges.push(delta)});
   vm.runInContext(source, context);
   const shortcuts = vm.runInContext("createPlaybackShortcuts(notify, adjustVolume)", context);
-  return {actions, notices, volumeChanges, controls, document, Element, shortcuts,
+  return {actions, notices, volumeChanges, controls, document, Element, shortcuts, context,
     key(options = {}) {
       const e = {code: "Space", target: new Element(), defaultPrevented: false,
         preventDefault() { this.defaultPrevented = true; }, ...options};
@@ -192,4 +194,54 @@ test("native volume messages and independent volume conflicts keep built-ins out
   assert.doesNotMatch(h.controls.shortcutHint.textContent, /失败/);
   assert.equal(h.notices.length, 1);
   assert.doesNotMatch(h.notices[0], /Ctrl \+ Alt/);
+});
+
+test("custom combinations replace default fallback and update accessible button hints", () => {
+  const h = setup();
+  const config = [{modifiers: 6, key: 75}, {modifiers: 1, key: 119}, {modifiers: 0, key: 0}];
+  h.shortcuts.message({hotkeyConfig: config, hotkeyCapture: false, hotkeys: {prev: true, next: true, toggle: false,
+    mediaPrev: true, mediaNext: true, mediaToggle: true, volumeUp: true, volumeDown: true}});
+  assert.equal(h.notices.length, 0);
+  h.key({code: "KeyK", key: "k", ctrlKey: true, shiftKey: true});
+  h.key({code: "F8", altKey: true});
+  assert.equal(h.key({code: "ArrowLeft", ctrlKey: true, altKey: true}).defaultPrevented, false);
+  h.key({code: "Space"}); h.key({code: "MediaPlayPause"});
+  assert.deepEqual(h.actions, ["prev", "next", "toggle", "toggle"]);
+  assert.match(h.controls.prev.title, /Ctrl \+ Shift \+ K/);
+  assert.equal(h.controls.prev["aria-keyshortcuts"], "Control+Shift+K MediaTrackPrevious");
+  assert.equal(h.controls.toggle["aria-keyshortcuts"], "Space MediaPlayPause");
+  const copy = h.shortcuts.bindings(); copy[0].key = 65;
+  assert.equal(h.shortcuts.bindings()[0].key, 75);
+});
+
+test("recording suspends combination fallback without disabling any fixed media key", () => {
+  const h = setup();
+  h.shortcuts.message({hotkeyConfig: [{modifiers: 3, key: 37}, {modifiers: 3, key: 39}, {modifiers: 3, key: 32}],
+    hotkeyCapture: true, hotkeys: {prev: false, next: false, toggle: false}});
+  assert.equal(h.key({code: "ArrowLeft", ctrlKey: true, altKey: true}).defaultPrevented, false);
+  assert.equal(h.key({code: "Space"}).defaultPrevented, false);
+  assert.equal(h.notices.length, 0);
+  h.key({code: "MediaPlayPause"}); h.key({code: "AudioVolumeUp", repeat: true});
+  assert.deepEqual(h.actions, ["toggle"]);
+  assert.deepEqual(h.volumeChanges, [5]);
+  h.shortcuts.message({hotkeyCapture: false});
+  h.key({code: "ArrowLeft", ctrlKey: true, altKey: true});
+  assert.deepEqual(h.actions, ["toggle", "prev"]);
+});
+
+test("editable binding validation rejects reserved, duplicate, media and malformed combinations", () => {
+  const h = setup(), c = h.context;
+  for (const b of [{modifiers: 0, key: 0}, {modifiers: 3, key: 32}, {modifiers: 6, key: 75}, {modifiers: 1, key: 119}])
+    assert.equal(c.validHotkeyBinding(b), true);
+  for (const b of [{modifiers: 0, key: 75}, {modifiers: 4, key: 75}, {modifiers: 8, key: 75},
+    {modifiers: 1, key: 115}, {modifiers: 3, key: 46}, {modifiers: 3, key: 123},
+    {modifiers: 3, key: 179}, {modifiers: 3, key: 175}, {modifiers: 3, key: 174},
+    {modifiers: 3, key: 0}, {modifiers: "3", key: 75}]) assert.equal(c.validHotkeyBinding(b), false);
+  const defaults = h.shortcuts.bindings();
+  assert.equal(c.validHotkeyBindings([defaults[0], defaults[0], defaults[2]]), false);
+  assert.equal(c.validHotkeyBindings([{modifiers: 0, key: 0}, {modifiers: 0, key: 0}, {modifiers: 0, key: 0}]), true);
+  assert.equal(c.validHotkeyBindings([]), false);
+  assert.equal(c.hotkeyFromEvent({code: "AudioVolumeUp", ctrlKey: true}), null);
+  h.shortcuts.message({hotkeyConfig: [{modifiers: 2, key: 179}, defaults[1], defaults[2]]});
+  assert.equal(h.shortcuts.bindings()[0].key, 37);
 });

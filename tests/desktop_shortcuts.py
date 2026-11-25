@@ -24,6 +24,7 @@ user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+user32.SetForegroundWindow.argtypes = [wintypes.HWND]
 MODIFIERS = 0x4003  # MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
 KEYS = {1: 0x25, 2: 0x27, 3: 0x20}
 MEDIA_KEYS = {4: 0xB1, 5: 0xB0, 6: 0xB3}  # Previous, Next, PlayPause
@@ -210,6 +211,29 @@ try:
             assert js("$('toggle').title.includes('全局')")
             print('OK: native registration, scoped queue, combination shortcuts, fixed media keys, volume repeat/bounds, WM_APPCOMMAND and tray' +
                   (', conflict warning and local fallback' if conflict else ''))
+            if not conflict:
+                user32.SetForegroundWindow(hwnd)
+                js("$('settingsButton').click(); $('record-prev').click()")
+                until(lambda: js("$('hotkey-prev').value==='请按组合键…'"))
+                assert user32.RegisterHotKey(None, 60, MODIFIERS, KEYS[1]), 'Recording did not release the old combination'
+                user32.UnregisterHotKey(None, 60)
+                assert not user32.RegisterHotKey(None, 60, modifiers(6), MEDIA_KEYS[6]), 'Recording changed a fixed media binding'
+                for kind in ('keyDown', 'keyUp'):
+                    cdp('Input.dispatchKeyEvent', {'type': kind, 'key': 'F8', 'code': 'F8', 'modifiers': 3, 'windowsVirtualKeyCode': 119})
+                until(lambda: js("$('hotkey-prev').value==='Ctrl + Alt + F8'"))
+                js("$('saveHotkeys').click()")
+                until(lambda: js("$('hotkeyEditStatus').textContent.includes('已保存') && playbackShortcuts.bindings()[0].key===119"))
+                assert (root / 'hotkeys.ini').read_text().splitlines()[0] == '3 119'
+                assert user32.RegisterHotKey(None, 60, MODIFIERS, KEYS[1]), 'Old combination was not released after save'
+                user32.UnregisterHotKey(None, 60)
+                assert not user32.RegisterHotKey(None, 60, MODIFIERS, 119), 'Custom combination was not registered'
+                ALL_KEYS[1] = 119
+                js("$('settings').querySelector('.close').click()")
+                hotkey(5)
+                until(lambda: js('state.index===2'))
+                hotkey(1)
+                until(lambda: js('state.index===1'))
+                print('OK: real capture suspension, persistent custom registration, old key release and unchanged fixed media keys')
         finally:
             if ws:
                 ws.close()

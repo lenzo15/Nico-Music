@@ -10,7 +10,7 @@ const asset = {name: "NicoMusic-v2.0.0-windows-x64.zip", state: "uploaded", size
 const release = (tag = "v2.0.0", assets = [asset]) => ({tag_name: tag, draft: false, prerelease: false, assets});
 function setup({data = {}, desktop = true, brokenStorage = false} = {}) {
   const controls = {}, sent = [], notices = [];
-  for (const id of ["checkUpdates", "downloadUpdate", "cancelUpdate", "showDownload", "autoUpdate", "info",
+  for (const id of ["checkUpdates", "downloadUpdate", "cancelUpdate", "showDownload", "autoUpdate", "settingsButton",
     "updateStatus", "appVersion", "downloadProgress", "updateProgress", "downloadBytes"]) {
     controls[id] = {hidden: false, disabled: false, textContent: "", dataset: {}};
   }
@@ -54,7 +54,7 @@ test("startup checks once and advertises only strictly newer stable releases", (
   h.checked();
   assert.match(h.controls.updateStatus.textContent, /发现新版本 v2.0.0/);
   assert.equal(h.controls.downloadUpdate.hidden, false);
-  assert.equal(h.controls.info.dataset.update, "true");
+  assert.equal(h.controls.settingsButton.dataset.update, "true");
   assert.equal(h.notices.length, 1);
   h.checked();
   assert.equal(h.notices.length, 1);

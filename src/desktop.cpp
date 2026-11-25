@@ -9,6 +9,7 @@
 #include "focus_presets.hpp"
 #include "startup_splash.hpp"
 #include "updater.hpp"
+#include "hotkeys.hpp"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -19,6 +20,7 @@ ComPtr<ICoreWebView2Controller> controller;
 ComPtr<ICoreWebView2> view;
 std::unique_ptr<Station> station;
 std::unique_ptr<Updater> updater;
+std::unique_ptr<HotkeySettings> hotkeySettings;
 std::optional<UpdateDownload> pendingDownload;
 constexpr UINT chooseUpdateFile = WM_APP + 3;
 StartupSplash splash;
@@ -56,10 +58,7 @@ struct PlaybackHotkey {
     bool registered = false;
 };
 PlaybackHotkey playbackHotkeys[] = {
-    {1, VK_LEFT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "prev", "prev"},
-    {2, VK_RIGHT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "next", "next"},
-    {3, VK_SPACE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "toggle", "toggle"},
-    // Built-in media keys are fixed defaults, not editable combination shortcuts.
+    // IDs 1–3 belong to HotkeySettings. Built-in media keys stay independent.
     {4, VK_MEDIA_PREV_TRACK, MOD_NOREPEAT, "prev", "mediaPrev"},
     {5, VK_MEDIA_NEXT_TRACK, MOD_NOREPEAT, "next", "mediaNext"},
     {6, VK_MEDIA_PLAY_PAUSE, MOD_NOREPEAT, "toggle", "mediaToggle"},
@@ -77,14 +76,7 @@ void unregisterPlaybackHotkeys(HWND h) {
         key.registered = false;
     }
 }
-void publishHotkeys() {
-    string json = "{\"hotkeys\":{";
-    for (const auto& key : playbackHotkeys) {
-        if (json.back() != '{') json += ',';
-        json += string("\"") + key.status + "\":" + (key.registered ? "true" : "false");
-    }
-    view->PostWebMessageAsJson(std::wstring(json.begin(), json.end()).append(L"}}").c_str());
-}
+void publishHotkeys(const string& result = {}, bool hasResult = false, int captureRequest = 0);
 
 NOTIFYICONDATAW trayData(HWND h) {
     NOTIFYICONDATAW icon{};
@@ -212,6 +204,28 @@ bool postPlaybackShortcut(const char* action) {
     // The page owns initial queue selection and disabled transport boundaries.
     const auto json = wide(string("{\"shortcut\":\"") + action + "\"}");
     return SUCCEEDED(view->PostWebMessageAsJson(json.c_str()));
+}
+void publishHotkeys(const string& result, bool hasResult, int captureRequest) {
+    if (!view || !ready || !hotkeySettings) return;
+    constexpr const char* actions[] = {"prev", "next", "toggle"};
+    string json = "{\"hotkeys\":{";
+    for (size_t i = 0; i < 3; ++i) {
+        if (i) json += ',';
+        json += quotedJson(actions[i]) + ":" + (hotkeySettings->registered()[i] ? "true" : "false");
+    }
+    for (const auto& key : playbackHotkeys)
+        json += "," + quotedJson(key.status) + ":" + (key.registered ? "true" : "false");
+    json += "},\"hotkeyConfig\":[";
+    for (size_t i = 0; i < 3; ++i) {
+        if (i) json += ',';
+        const auto& binding = hotkeySettings->bindings()[i];
+        json += "{\"modifiers\":" + std::to_string(binding.modifiers) + ",\"key\":" + std::to_string(binding.key) + "}";
+    }
+    json += string("],\"hotkeyCapture\":") + (hotkeySettings->capturing() ? "true" : "false") +
+        ",\"hotkeyCaptureRequest\":" + std::to_string(captureRequest) +
+        ",\"hotkeyWarning\":" + quotedJson(hotkeySettings->warning());
+    if (hasResult) json += string(",\"hotkeyResult\":{\"ok\":") + (result.empty() ? "true" : "false") + ",\"error\":" + quotedJson(result) + "}";
+    view->PostWebMessageAsJson(wide(json + "}").c_str());
 }
 void publishUpdates(bool force = false) {
     if (!view || !ready || !updater) return;
@@ -354,6 +368,27 @@ void handle(const string &message) {
     bool changed = false;
     try {
         if (cmd == "window") { windowAction(arg); return; }
+        if (cmd == "hotkeys-capture") {
+            if (!hotkeySettings) return;
+            const auto [mode, token] = split(arg);
+            if (mode != "on" && mode != "off") return;
+            const int request = token.empty() ? 0 : number(token, 0, INT_MAX);
+            hotkeySettings->capture(mode == "on" && GetForegroundWindow() == window);
+            publishHotkeys({}, false, request);
+            return;
+        }
+        if (cmd == "hotkeys-set") {
+            if (!hotkeySettings) return;
+            HotkeyBindings bindings{};
+            std::istringstream input(arg);
+            bool valid = true;
+            for (auto& b : bindings) if (!(input >> b.modifiers >> b.key)) valid = false;
+            string extra;
+            if (input >> extra) valid = false;
+            const string error = valid ? hotkeySettings->apply(bindings) : "热键设置格式无效";
+            publishHotkeys(error, true);
+            return;
+        }
         if (cmd == "check-update") {
             if (!pendingDownload) updater->check();
             publishUpdates();
@@ -522,6 +557,7 @@ HRESULT setup(ICoreWebView2Controller *c) {
                 args->get_Uri(&uri);
                 if (!uri || wcscmp(uri, page) != 0)
                     args->put_Cancel(TRUE);
+                else if (hotkeySettings && hotkeySettings->capturing()) hotkeySettings->capture(false);
                 CoTaskMemFree(uri);
                 return S_OK;
             })
@@ -584,6 +620,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         chooseDownload();
         return 0;
     case WM_HOTKEY:
+        if (hotkeySettings && w >= 1 && w <= 3 && hotkeySettings->registered()[w - 1]) {
+            constexpr const char* actions[] = {"prev", "next", "toggle"};
+            postPlaybackShortcut(actions[w - 1]);
+            return 0;
+        }
         for (const auto& key : playbackHotkeys) {
             if (!key.registered || w != static_cast<WPARAM>(key.id)) continue;
             postPlaybackShortcut(key.action);
@@ -629,6 +670,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             else if (LOWORD(l) == WM_CONTEXTMENU) trayMenu(h, {GET_X_LPARAM(w), GET_Y_LPARAM(w)});
         }
         return 0;
+    case WM_ACTIVATE:
+        if (LOWORD(w) == WA_INACTIVE && hotkeySettings && hotkeySettings->capturing()) {
+            hotkeySettings->capture(false);
+            publishHotkeys();
+        }
+        break;
     case WM_SIZE:
         if (w != SIZE_MINIMIZED) {
             if (splash.visible()) InvalidateRect(h, nullptr, FALSE);
@@ -694,6 +741,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_DESTROY:
         if (updater) updater->cancel();
         pendingDownload.reset();
+        hotkeySettings.reset();
         unregisterPlaybackHotkeys(h);
         splash.finish(h);
         RemovePropW(h, primaryMarker);
@@ -761,6 +809,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         UpdateWindow(window); // first frame, before library/plugin discovery or WebView2 initialization
         updater = std::make_unique<Updater>();
         station = std::make_unique<Station>();
+        hotkeySettings = std::make_unique<HotkeySettings>(libraryFile().parent_path() / L"hotkeys.ini",
+            [](int id, const HotkeyBinding& binding) {
+                return RegisterHotKey(window, id, binding.modifiers | MOD_NOREPEAT, binding.key) != FALSE;
+            }, [](int id) { UnregisterHotKey(window, id); });
         registerPlaybackHotkeys(window);
         HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
             nullptr, (libraryFile().parent_path() / L"WebView2").c_str(), nullptr,
@@ -792,6 +844,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, wide(e.what()).c_str(), L"NicoMusic", MB_OK | MB_ICONERROR);
         code = 1;
     }
+    hotkeySettings.reset();
     unregisterPlaybackHotkeys(window);
     updater.reset();
     station.reset();

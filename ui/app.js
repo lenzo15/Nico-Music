@@ -12,6 +12,7 @@ const paths = {
     '<path d="M5 13a7 7 0 1 0 7-7" stroke-width="2.3"/><path d="M3.3 9A10 10 0 0 1 17 3.8"/><circle cx="12" cy="13" r="2.4"/>',
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.3"/><path d="M6 12a6 6 0 0 1 6-6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
+  settings: '<circle cx="12" cy="12.5" r="3"/><path d="m10 3-.5 2.5-2.2 1.3-2.4-.8-2 3.5 1.9 1.7v2.6l-1.9 1.7 2 3.5 2.4-.8 2.2 1.3L10 22h4l.5-2.5 2.2-1.3 2.4.8 2-3.5-1.9-1.7v-2.6l1.9-1.7-2-3.5-2.4.8-2.2-1.3L14 3Z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   play: '<path d="m7 4 13 8-13 8z" fill="currentColor"/>',
   pause: '<path d="M8 5v14m8-14v14" stroke-width="4"/>',
@@ -248,7 +249,6 @@ $("addForm").onsubmit = (e) => {
   );
 };
 $("url").oninput = () => $("url").setCustomValidity("");
-$("info").onclick = () => $("about").showModal();
 $("projectLink").onclick = (e) => {
   if (!bridge) return; // Keep the ordinary link working in browser previews.
   e.preventDefault();
@@ -622,12 +622,13 @@ function sync() {
   renderRows();
 }
 const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
+const appSettings = createSettings({shortcuts: playbackShortcuts, send, notify: toast, desktop: !!bridge});
 const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridge,
   storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
   if (updateChecker.message(msg)) return;
-  if (playbackShortcuts.message(msg)) return;
+  if (playbackShortcuts.message(msg)) { appSettings.message(msg); return; }
   if ("localPath" in msg) {
     if ($("addDialog").open) {
       $("url").value = msg.localPath; $("url").setCustomValidity(""); $("url").focus();

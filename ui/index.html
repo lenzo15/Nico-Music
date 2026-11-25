@@ -12,7 +12,9 @@
     <script defer src="focus.js"></script>
     <script defer src="playlists.js"></script>
     <script defer src="window-bar.js"></script>
+    <script defer src="hotkey-bindings.js"></script>
     <script defer src="shortcuts.js"></script>
+    <script defer src="settings.js"></script>
     <script defer src="updates.js"></script>
     <script defer src="app.js"></script>
   </head>
@@ -46,11 +48,13 @@
           ><span><strong>本地音乐库</strong></span
           ><button
             class="icon"
-            id="info"
-            title="关于 NicoMusic"
-            aria-label="关于 NicoMusic"
+            id="settingsButton"
+            title="设置"
+            aria-label="设置"
+            aria-haspopup="dialog"
+            aria-controls="settings"
           >
-            <i data-icon="info"></i>
+            <i data-icon="settings"></i>
           </button>
         </div>
       </aside>
@@ -238,11 +242,36 @@
         </div>
       </form>
     </dialog>
-    <dialog id="about">
-      <button class="close icon" aria-label="关闭">
-        <i data-icon="close"></i>
-      </button>
-      <h2>关于 NicoMusic</h2>
+    <dialog id="settings" aria-labelledby="settingsTitle">
+      <button class="close icon" aria-label="关闭设置"><i data-icon="close"></i></button>
+      <h2 id="settingsTitle">设置</h2>
+      <div class="settingsTabs" role="tablist" aria-label="设置分类">
+        <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="true" aria-controls="settingsHotkeys">热键</button>
+        <button type="button" id="settingsTabGeneral" data-settings-tab="general" role="tab" aria-selected="false" aria-controls="settingsGeneral" tabindex="-1">常规</button>
+        <button type="button" id="settingsTabAbout" data-settings-tab="about" role="tab" aria-selected="false" aria-controls="about" tabindex="-1">关于</button>
+      </div>
+      <section id="settingsHotkeys" role="tabpanel" aria-labelledby="settingsTabHotkeys">
+        <h3>全局组合热键</h3>
+        <p>点击录制，再按 Ctrl 或 Alt 加其他按键（可加 Shift）。保存后生效，关闭设置会放弃未保存的修改。</p>
+        <form id="hotkeyForm">
+          <div class="hotkeyRow"><label for="hotkey-prev">上一首</label><input id="hotkey-prev" readonly aria-label="上一首组合热键" /><button type="button" id="record-prev" class="subtle">录制</button><button type="button" id="clear-prev" class="subtle">清除</button></div>
+          <div class="hotkeyRow"><label for="hotkey-next">下一首</label><input id="hotkey-next" readonly aria-label="下一首组合热键" /><button type="button" id="record-next" class="subtle">录制</button><button type="button" id="clear-next" class="subtle">清除</button></div>
+          <div class="hotkeyRow"><label for="hotkey-toggle">播放 / 暂停</label><input id="hotkey-toggle" readonly aria-label="播放暂停组合热键" /><button type="button" id="record-toggle" class="subtle">录制</button><button type="button" id="clear-toggle" class="subtle">清除</button></div>
+          <p id="hotkeyEditStatus" role="status" aria-live="polite">正在读取当前热键…</p>
+          <div class="settingsActions"><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button></div>
+        </form>
+        <p id="shortcutHint">组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。</p>
+        <h3>默认媒体键（固定）</h3>
+        <p>MediaPlayPause：播放 / 暂停<br />MediaPrevious：上一首<br />MediaNext：下一首<br />VolumeUp / VolumeDown：播放器音量 ±5%</p>
+        <p id="mediaKeyHint">这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键支持长按连续调节。</p>
+      </section>
+      <section id="settingsGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" hidden>
+        <h3>关闭窗口</h3>
+        <p>清除已记住的关闭方式，下次关闭时重新询问收起到托盘或退出。</p>
+        <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
+      </section>
+      <section id="about" role="tabpanel" aria-labelledby="settingsTabAbout" hidden>
+      <h3>关于 NicoMusic</h3>
       <p>插件化、极简的仿网易云音乐播放器。</p>
       <p>
         <a id="projectLink" href="https://github.com/lenzo15/Nico-Music" target="_blank" rel="noopener noreferrer" title="在默认浏览器中打开 GitHub 项目">
@@ -265,13 +294,7 @@
         </div>
         <label class="autoUpdate"><input type="checkbox" id="autoUpdate" checked />启动时自动检查更新</label>
       </section>
-      <h3>播放快捷键</h3>
-      <p>上一首：Ctrl + Alt + ←<br />下一首：Ctrl + Alt + →<br />播放 / 暂停：Ctrl + Alt + 空格</p>
-      <p id="shortcutHint">组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。</p>
-      <h3>默认媒体键</h3>
-      <p>MediaPlayPause：播放 / 暂停<br />MediaPrevious：上一首<br />MediaNext：下一首<br />VolumeUp / VolumeDown：播放器音量 ±5%</p>
-      <p id="mediaKeyHint">这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键支持长按连续调节。</p>
-      <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
+      </section>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>

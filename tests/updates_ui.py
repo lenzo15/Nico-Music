@@ -53,11 +53,11 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js('nativeMessage({appVersion:"1.0.0"})')
         assert js('hostMessages.includes("check-update")')
         release={'tag_name':'v9.0.0','draft':False,'prerelease':False,'assets':[{'name':'NicoMusic-v9.0.0-windows-x64.zip','state':'uploaded','size':1048576,'digest':'sha256:'+'a'*64,'browser_download_url':'https://github.com/lenzo15/Nico-Music/releases/download/v9.0.0/NicoMusic-v9.0.0-windows-x64.zip'}]}
-        js('nativeMessage('+json.dumps({'updater':{'phase':'checked','httpStatus':200,'body':json.dumps(release)}})+'); $("info").click()')
-        assert js('$("about").open && !$("downloadUpdate").hidden && $("appVersion").textContent==="v1.0.0"')
+        js('nativeMessage('+json.dumps({'updater':{'phase':'checked','httpStatus':200,'body':json.dumps(release)}})+'); $("settingsButton").click(); $("settingsTabAbout").click()')
+        assert js('$("settings").open && !$("about").hidden && !$("downloadUpdate").hidden && $("appVersion").textContent==="v1.0.0"')
         for width,height in [(1180,776),(610,445)]:
             cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
-            assert js('''(()=>{ const d=$('about'); $('downloadUpdate').scrollIntoView({block:'center'}); const r=$('downloadUpdate').getBoundingClientRect(), b=d.getBoundingClientRect(); return r.top>=b.top && r.bottom<=b.bottom && b.top>=0 && b.bottom<=innerHeight; })()''')
+            assert js('''(()=>{ const d=$('settings'); $('downloadUpdate').scrollIntoView({block:'center'}); const r=$('downloadUpdate').getBoundingClientRect(), b=d.getBoundingClientRect(); return r.top>=b.top && r.bottom<=b.bottom && b.top>=0 && b.bottom<=innerHeight; })()''')
         js('$("downloadUpdate").click()')
         assert js('hostMessages.at(-1).startsWith("download-update https://github.com/lenzo15/Nico-Music/")')
         js('nativeMessage({updater:{phase:"downloading",received:262144,total:1048576}})')

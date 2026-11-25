@@ -51,8 +51,8 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
     el("downloadUpdate").disabled = busy;
     el("cancelUpdate").hidden = phase !== "downloading";
     el("cancelUpdate").disabled = false;
-    el("info").dataset.update = String(available);
-    el("info").title = available ? `关于 NicoMusic（发现新版本 ${latest.tag_name}）` : "关于 NicoMusic";
+    el("settingsButton").dataset.update = String(available);
+    el("settingsButton").title = available ? `设置（发现新版本 ${latest.tag_name}，可在关于中下载）` : "设置";
   }
   function releaseStatus() {
     if (!latest) return "暂无正式发布版本";
@@ -72,7 +72,7 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
     controls();
     if (available && announce && announced !== release.tag_name) {
       announced = release.tag_name;
-      notify(`发现 NicoMusic ${release.tag_name}，可在「关于」中下载更新`);
+      notify(`发现 NicoMusic ${release.tag_name}，可在「设置 → 关于」中下载更新`);
     }
   }
   function check() {
@@ -157,7 +157,7 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
       el("downloadProgress").hidden = true;
       el("showDownload").hidden = false;
       text(`下载完成：${state.file}。请退出播放器后解压更新，音乐库不会被修改。`);
-      notify("更新安装包已下载并校验，可在「关于」中打开保存位置");
+      notify("更新安装包已下载并校验，可在「设置 → 关于」中打开保存位置");
     } else if (phase === "save-cancelled" || phase === "cancelled") {
       el("downloadProgress").hidden = true;
       text(phase === "save-cancelled" ? "已取消选择保存位置，可重新下载" : "已取消下载，临时文件已删除");
