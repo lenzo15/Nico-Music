@@ -4,7 +4,7 @@
 
 ## 下载
 
-[NicoMusic v1.0.0 下载](https://github.com/lenzo15/Nico-Music/releases/tag/v1.0.0)
+[下载 NicoMusic](https://github.com/lenzo15/Nico-Music/releases)
 
 ## 声明
 
