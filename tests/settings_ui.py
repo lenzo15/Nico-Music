@@ -206,6 +206,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js("$('hotkey-prev').value==='Ctrl + Alt + ←'")
         js("$('settingsTabAbout').click()")
         assert js("!$('about').hidden && $('settingsHotkeys').hidden && $('about').closest('dialog').id==='settings' && !!$('projectLink')")
+        assert js("$('starInvite').textContent.includes('✨') && $('starInvite').textContent.includes('Star') && $('projectLink').href==='https://github.com/lenzo15/Nico-Music'")
         js("$('settingsTabGeneral').click(); localStorage.setItem('titleBarCloseAction','minimize'); window.dispatchEvent(new Event('storage')); $('resetExit').click()")
         assert js("!localStorage.getItem('titleBarCloseAction') && $('resetExit').disabled")
         js("$('settingsTabAbout').focus()")
