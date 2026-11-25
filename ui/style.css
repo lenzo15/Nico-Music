@@ -365,7 +365,7 @@ main {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  padding: 24px clamp(24px, 3.4vw, 54px) 6px;
+  padding: 24px clamp(24px, 3.4vw, 54px) 22px;
 }
 .crumb {
   display: flex;
