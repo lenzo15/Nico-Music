@@ -21,7 +21,7 @@ NicoMusic 仅用于学习、研究和个人使用。项目与 BiliBili 及相关
 - **批量操作**：多选或全选歌曲，批量播放、加入歌单、喜欢 / 取消喜欢，以及移出歌单或音乐库。
 - **播放队列**：查看当前队列并点播其中的歌曲；从收藏或自建歌单播放时按对应列表建立队列，切换页面不影响当前队列。
 - **专注模式**：点击当前歌曲封面进入专注页，内置简洁视图。
-- **托盘与快捷操作**：最小化到系统托盘后继续播放，点击托盘图标恢复窗口；关闭窗口时可选择收起或退出并记住选择；支持空格播放 / 暂停、Esc 返回列表。
+- **托盘与快捷操作**：最小化到系统托盘后继续播放，点击托盘图标恢复窗口；关闭窗口时可选择收起或退出并记住选择；全局快捷键 `Ctrl + Alt + ←` 上一首、`Ctrl + Alt + →` 下一首、`Ctrl + Alt + 空格` 播放 / 暂停，后台及托盘中也可使用。窗口内还支持空格播放 / 暂停（输入或弹窗时不触发）、Esc 返回列表。若组合键被其他程序占用，会提示并降级为仅窗口内可用；可在播放按钮提示及「关于」中查看。
 - **本地保存**：保留音乐库、自建歌单、收藏及播放模式、专注预设等偏好，重启后仍可使用。
 - **插件扩展**：音源与专注预设独立安装、卸载，无需重新编译；不安装插件也可播放本地音频和受支持的音频直链。
 - **命令行模式**：提供独立 CLI，支持添加音乐、查看列表、播放控制及循环模式，无需 WebView2。
@@ -57,6 +57,8 @@ cmake --build build --config Release
 <summary>本地数据、测试与许可</summary>
 
 音乐库默认保存在 `%LOCALAPPDATA%\NicoMusic\library.tsv`。升级时沿用已有的 `%LOCALAPPDATA%\BiliMusic` 目录，保留歌单、收藏和偏好；设置 `NICOMUSIC_HOME` 可更换数据目录。验证无插件播放：`python tests/smoke.py build/Release/NicoMusicCLI.exe`；验证无插件桌面模式：`python tests/desktop_playlists.py build/Release/NicoMusic.exe --minimal`（需先退出桌面播放器并安装 `websocket-client`）。
+
+快捷键回归：`node --test tests/shortcuts.js`；Windows 桌面集成：`python tests/desktop_shortcuts.py build/Release/NicoMusic.exe`，加 `--conflict` 验证全局组合键被占用时的提示与窗口内降级（需先退出桌面播放器，且组合键未被其他程序占用）。
 
 [mpv 客户端头文件](third_party/mpv/client.h) 保留原 ISC 声明；libmpv 二进制、WebView2 和插件使用的第三方工具各自遵循上游许可。
 

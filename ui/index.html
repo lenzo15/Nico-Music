@@ -12,6 +12,7 @@
     <script defer src="focus.js"></script>
     <script defer src="playlists.js"></script>
     <script defer src="window-bar.js"></script>
+    <script defer src="shortcuts.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>
@@ -116,16 +117,17 @@
       </div>
       <div class="transport">
         <div class="transportButtons">
-          <button id="prev" class="icon" title="上一首" aria-label="上一首">
+          <button id="prev" class="icon" title="上一首（Ctrl + Alt + ←）" aria-label="上一首" aria-keyshortcuts="Control+Alt+ArrowLeft">
             <i data-icon="prev"></i></button
           ><button
             id="toggle"
             class="toggle"
-            title="播放 / 暂停（空格）"
+            title="播放 / 暂停（空格 / Ctrl + Alt + 空格）"
             aria-label="播放"
+            aria-keyshortcuts="Space Control+Alt+Space"
           >
             <i data-icon="play"></i></button
-          ><button id="next" class="icon" title="下一首" aria-label="下一首">
+          ><button id="next" class="icon" title="下一首（Ctrl + Alt + →）" aria-label="下一首" aria-keyshortcuts="Control+Alt+ArrowRight">
             <i data-icon="next"></i>
           </button>
         </div>
@@ -241,6 +243,9 @@
       <p>
         在浏览器选曲，在音乐空间聆听。切换或关闭网页不会中断播放；关闭播放器将停止声音。
       </p>
+      <h3>播放快捷键</h3>
+      <p>上一首：Ctrl + Alt + ←<br />下一首：Ctrl + Alt + →<br />播放 / 暂停：Ctrl + Alt + 空格</p>
+      <p id="shortcutHint">组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。</p>
       <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>

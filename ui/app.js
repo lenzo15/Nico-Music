@@ -616,8 +616,10 @@ function sync() {
   $("libCount").textContent = tracks.length;
   renderRows();
 }
+const playbackShortcuts = createPlaybackShortcuts(toast);
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
+  if (playbackShortcuts.message(msg)) return;
   if ("localPath" in msg) {
     if ($("addDialog").open) {
       $("url").value = msg.localPath; $("url").setCustomValidity(""); $("url").focus();
@@ -658,17 +660,6 @@ bridge?.addEventListener("message", (e) => {
     if (msg.imported === "add") toast("已加入歌单");
   }
   sync();
-});
-document.addEventListener("keydown", (e) => {
-  if (
-    document.querySelector("dialog[open]") ||
-    e.target.matches("input,textarea,button,select")
-  )
-    return;
-  if (e.code === "Space") {
-    e.preventDefault();
-    toggle();
-  }
 });
 sync();
 if (bridge) {

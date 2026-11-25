@@ -43,6 +43,34 @@ constexpr UINT trayId = 1;
 UINT taskbarCreated{};
 bool inTray = false;
 
+struct PlaybackHotkey {
+    int id;
+    UINT key;
+    const char* action;
+    bool registered = false;
+};
+PlaybackHotkey playbackHotkeys[] = {
+    {1, VK_LEFT, "prev"}, {2, VK_RIGHT, "next"}, {3, VK_SPACE, "toggle"}
+};
+void registerPlaybackHotkeys(HWND h) {
+    for (auto& key : playbackHotkeys)
+        key.registered = RegisterHotKey(h, key.id, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, key.key) != FALSE;
+}
+void unregisterPlaybackHotkeys(HWND h) {
+    for (auto& key : playbackHotkeys) {
+        if (key.registered) UnregisterHotKey(h, key.id);
+        key.registered = false;
+    }
+}
+void publishHotkeys() {
+    string json = "{\"hotkeys\":{";
+    for (const auto& key : playbackHotkeys) {
+        if (json.back() != '{') json += ',';
+        json += string("\"") + key.action + "\":" + (key.registered ? "true" : "false");
+    }
+    view->PostWebMessageAsJson(std::wstring(json.begin(), json.end()).append(L"}}").c_str());
+}
+
 NOTIFYICONDATAW trayData(HWND h) {
     NOTIFYICONDATAW icon{};
     icon.cbSize = sizeof(icon);
@@ -276,6 +304,7 @@ void handle(const string &message) {
             if (!ready) station->queueMissingCovers();
             ready = true;
             if (!arg.empty()) station->setRepeat(arg);
+            publishHotkeys();
             publishWindowState();
             changed = true;
         } else if (cmd == "start" || cmd == "add") {
@@ -440,6 +469,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     switch (m) {
+    case WM_HOTKEY:
+        if (ready && view) {
+            for (const auto& key : playbackHotkeys) {
+                if (!key.registered || w != static_cast<WPARAM>(key.id)) continue;
+                // Reuse the page's transport actions, including its scoped initial queue.
+                const auto json = wide(string("{\"shortcut\":\"") + key.action + "\"}");
+                view->PostWebMessageAsJson(json.c_str());
+                break;
+            }
+        }
+        return 0;
     case WM_ERASEBKGND:
         if (splash.visible()) return 1;
         break;
@@ -528,6 +568,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_DESTROY:
+        unregisterPlaybackHotkeys(h);
         splash.finish(h);
         RemovePropW(h, primaryMarker);
         if (activationWait) {
@@ -593,6 +634,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         ShowWindow(window, show);
         UpdateWindow(window); // first frame, before library/plugin discovery or WebView2 initialization
         station = std::make_unique<Station>();
+        registerPlaybackHotkeys(window);
         HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
             nullptr, (libraryFile().parent_path() / L"WebView2").c_str(), nullptr,
             Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
@@ -623,6 +665,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, wide(e.what()).c_str(), L"NicoMusic", MB_OK | MB_ICONERROR);
         code = 1;
     }
+    unregisterPlaybackHotkeys(window);
     station.reset();
     CoUninitialize();
     return code;
