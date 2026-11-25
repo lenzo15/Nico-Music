@@ -17,7 +17,7 @@ import time
 import urllib.request
 
 import websocket
-from tray import check_tray_restore, desktop_running
+from tray import check_tray_restore, desktop_running, tray_registered
 
 
 user32 = ctypes.windll.user32
@@ -93,6 +93,8 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(desktop_running)
         relaunch()  # even if WebView2 is still starting
         hwnd = wintypes.HWND(until(lambda: find_window(proc.pid)))
+
+        until(lambda: user32.IsWindowVisible(hwnd) and tray_registered(hwnd))
 
         def endpoint():
             try:
@@ -227,6 +229,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js("setTimeout(() => $('exitForm').querySelector('[value=close]').click(), 50)")
         assert proc.wait(timeout=8) == 0
         assert not desktop_running()
+        until(lambda: not tray_registered(hwnd))
         print('OK: single desktop instance and second-launch tray activation; no top strip; all modal backdrops; resize edges/corners; signed coordinates; maximize/restore/minimize/close')
     finally:
         release.set()

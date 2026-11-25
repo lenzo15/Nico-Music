@@ -50,7 +50,9 @@ void handOffForeground() {
 constexpr UINT trayCallback = WM_APP + 1;
 constexpr UINT trayId = 1;
 UINT taskbarCreated{};
-bool inTray = false;
+constexpr UINT_PTR trayRetryTimer = 4;
+bool trayRegistered = false;
+bool hiddenToTray = false;
 
 struct PlaybackHotkey {
     int id;
@@ -87,26 +89,35 @@ NOTIFYICONDATAW trayData(HWND h) {
     icon.uID = trayId;
     return icon;
 }
-bool addTrayIcon(HWND h) {
+bool ensureTrayIcon(HWND h) {
+    if (trayRegistered) return true;
     auto icon = trayData(h);
     icon.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE | NIF_SHOWTIP;
     icon.hIcon = reinterpret_cast<HICON>(GetClassLongPtrW(h, GCLP_HICON));
     icon.uCallbackMessage = trayCallback;
-    wcscpy_s(icon.szTip, L"NicoMusic · 点击恢复播放器");
-    if (!Shell_NotifyIconW(NIM_ADD, &icon)) return false;
-    icon.uVersion = NOTIFYICON_VERSION_4;
-    if (Shell_NotifyIconW(NIM_SETVERSION, &icon)) return true;
-    Shell_NotifyIconW(NIM_DELETE, &icon);
+    wcscpy_s(icon.szTip, L"NicoMusic · 显示播放器");
+    // Explorer can also broadcast TaskbarCreated after a DPI change with the icon intact.
+    if (Shell_NotifyIconW(NIM_ADD, &icon) || Shell_NotifyIconW(NIM_MODIFY, &icon)) {
+        icon.uVersion = NOTIFYICON_VERSION_4;
+        if (Shell_NotifyIconW(NIM_SETVERSION, &icon)) {
+            trayRegistered = true;
+            KillTimer(h, trayRetryTimer);
+            return true;
+        }
+        Shell_NotifyIconW(NIM_DELETE, &icon);
+    }
+    SetTimer(h, trayRetryTimer, 3000, nullptr);
     return false;
 }
 void removeTrayIcon(HWND h) {
-    if (!inTray) return;
-    inTray = false;
+    KillTimer(h, trayRetryTimer);
+    if (!trayRegistered) return;
+    trayRegistered = false;
     auto icon = trayData(h);
     Shell_NotifyIconW(NIM_DELETE, &icon);
 }
 void restoreWindow(HWND h) {
-    removeTrayIcon(h);
+    hiddenToTray = false;
     ShowWindow(h, IsIconic(h) ? SW_RESTORE : SW_SHOW); // retain maximized placement
     if (controller && !splash.visible()) controller->put_IsVisible(TRUE);
     HWND target = GetLastActivePopup(h);
@@ -143,7 +154,7 @@ void meterUnavailable() {
     view->PostWebMessageAsJson(L"{\"levels\":null}");
 }
 void meterTick() {
-    if (!meter || !view || inTray || IsIconic(window)) return;
+    if (!meter || !view || hiddenToTray || IsIconic(window)) return;
     std::array<int, 3> levels{};
     switch (meter->poll(levels)) {
     case AudioMeter::Result::waiting: return;
@@ -444,7 +455,7 @@ void handle(const string &message) {
         if (cmd == "levels") {
             stopMeter();
             const auto [action, id] = split(arg);
-            if (action == "on" && !inTray && station->active() >= 0 &&
+            if (action == "on" && !hiddenToTray && station->active() >= 0 &&
                 std::any_of(focusPresets.begin(), focusPresets.end(), [&](const auto& p) { return p.id == id; })) {
                 meter = std::make_unique<AudioMeter>();
                 if (!meter->start() || !SetTimer(window, 2, 32, nullptr)) meterUnavailable();
@@ -632,7 +643,7 @@ HRESULT setup(ICoreWebView2Controller *c) {
                     return S_OK;
                 }
                 splash.finish(window);
-                if (!inTray) controller->put_IsVisible(TRUE);
+                if (!hiddenToTray) controller->put_IsVisible(TRUE);
                 return S_OK;
             }).Get(), &token);
     if (FAILED(hr)) return hr;
@@ -665,9 +676,9 @@ HRESULT setup(ICoreWebView2Controller *c) {
     return view->Navigate(page);
 }
 LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-    if (taskbarCreated && m == taskbarCreated && inTray) {
-        // Explorer rebuilt its notification area. Never strand a hidden window.
-        if (!addTrayIcon(h)) restoreWindow(h);
+    if (taskbarCreated && m == taskbarCreated) {
+        trayRegistered = false;
+        if (!ensureTrayIcon(h) && hiddenToTray) restoreWindow(h);
         return 0;
     }
     switch (m) {
@@ -705,9 +716,9 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         break;
     case WM_SYSCOMMAND:
         if ((w & 0xfff0) == SC_MINIMIZE) {
-            if (inTray) return 0;
-            if (!addTrayIcon(h)) break; // normal taskbar minimize if the shell is unavailable
-            inTray = true;
+            if (hiddenToTray) return 0;
+            if (!ensureTrayIcon(h)) break; // normal taskbar minimize if the shell is unavailable
+            hiddenToTray = true;
             if (controller) controller->put_IsVisible(FALSE);
             ShowWindow(h, SW_HIDE);
             return 0;
@@ -717,7 +728,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         restoreWindow(h);
         return 0;
     case trayCallback:
-        if (inTray && HIWORD(l) == trayId) {
+        if (trayRegistered && HIWORD(l) == trayId) {
             if (LOWORD(l) == NIN_SELECT || LOWORD(l) == NIN_KEYSELECT) restoreWindow(h);
             else if (LOWORD(l) == WM_CONTEXTMENU) trayMenu(h, {GET_X_LPARAM(w), GET_Y_LPARAM(w)});
         }
@@ -741,6 +752,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_TIMER:
         if (w == 1) { publish(false); publishUpdates(); }
         else if (w == 2) meterTick();
+        else if (w == trayRetryTimer) ensureTrayIcon(h);
         else if (w == StartupSplash::timer) splash.tick(h);
         return 0;
     case WM_NCCALCSIZE: {
@@ -858,6 +870,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         splash.start(window);
         ShowWindow(window, show);
         UpdateWindow(window); // first frame, before library/plugin discovery or WebView2 initialization
+        ensureTrayIcon(window);
         updater = std::make_unique<Updater>();
         station = std::make_unique<Station>();
         hotkeySettings = std::make_unique<HotkeySettings>(libraryFile().parent_path() / L"hotkeys.ini",
@@ -895,6 +908,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, wide(e.what()).c_str(), L"NicoMusic", MB_OK | MB_ICONERROR);
         code = 1;
     }
+    if (IsWindow(window)) removeTrayIcon(window); // startup exception before WM_DESTROY
     hotkeySettings.reset();
     unregisterPlaybackHotkeys(window);
     updater.reset(); // join the download worker before cleaning staging files
