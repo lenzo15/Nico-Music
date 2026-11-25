@@ -28,7 +28,7 @@ NicoMusic 仅用于学习、研究和个人使用。项目与 BiliBili 及相关
 
 ## 发布更新
 
-更新来源固定为 [NicoMusic Releases](https://github.com/lenzo15/Nico-Music/releases)，只检查已发布的正式版，不使用草稿或预发布版。检查和下载在后台进行，网络失败不影响播放；不支持断点续传，取消或校验失败会删除临时文件。手动检查每分钟最多一次。
+更新来源固定为 [NicoMusic Releases](https://github.com/lenzo15/Nico-Music/releases)，只检查已发布的正式版，不使用草稿或预发布版。检查和下载在后台进行，网络失败不影响播放；不支持断点续传，取消或校验失败会删除临时文件。手动检查每分钟最多一次。发现新版后，点击「设置 → 关于 → 更新并重启」即可原地更新，无需选择目录。播放器会先在当前安装目录暂存、校验并解压官方 Windows x64 ZIP，再退出、替换包内文件并重启。安装目录须可写；不会清空音乐库或删除额外插件。此流程仅适用于已内置该功能的版本，v1.0.1 仍需手动解压升级一次。
 
 发布新版本时，请同时更新 `CMakeLists.txt` 中 `project(NicoMusic VERSION X.Y.Z ...)` 的版本号，并使用对应的 `vX.Y.Z` Release 标签；附加以 `windows-x64.zip` 或 `win-x64.zip` 结尾的安装包（例如 `NicoMusic-v1.1.0-windows-x64.zip`），播放器会自动选择该包，而不是源码或 ARM64 包。下载后的程序版本取自构建时的版本号，不会把 GitHub 上的版本号当成当前版本。
 
@@ -68,7 +68,7 @@ cmake --build build --config Release
 
 设置与快捷键回归：`node --test tests/shortcuts.js`、`python tests/settings_ui.py`（无头浏览器，不影响正在运行的播放器）。配置时加 `-DNICOMUSIC_HOTKEY_TESTS=ON`，构建后运行 `build/Release/NicoMusicHotkeyTest.exe`，验证原生保存、重启读取、占用及磁盘失败回滚和录制恢复（模拟注册，不抢占系统热键）。Windows 桌面集成：`python tests/desktop_shortcuts.py build/Release/NicoMusic.exe`，加 `--conflict` 验证全局组合键被占用时的提示与窗口内降级（需先退出桌面播放器，且组合键和媒体键未被其他程序占用）。
 
-更新检查及下载逻辑回归：`node --test tests/updates.js`；「关于」页及下载状态无头回归：`python tests/updates_ui.py`（模拟原生消息，不实际下载）。原生联网测试：配置时加 `-DNICOMUSIC_UPDATE_TESTS=ON`，构建后运行 `python tests/updater_network.py build/Release/NicoMusicUpdateTest.exe`，验证真实 GitHub 检查、下载、校验失败保护及取消清理（临时目录，不影响已安装播放器）。
+更新检查及下载逻辑回归：`node --test tests/updates.js`；「关于」页及下载状态无头回归：`python tests/updates_ui.py`（模拟原生消息，不实际下载）。原生联网测试：配置时加 `-DNICOMUSIC_UPDATE_TESTS=ON`，构建后运行 `python tests/updater_network.py build/Release/NicoMusicUpdateTest.exe`，验证真实 GitHub 检查、下载、校验失败保护及取消清理（临时目录，不影响已安装播放器）。使用同一测试程序运行 `python tests/update_install.py build/Release/NicoMusicUpdateTest.exe` 可验证原地安装、重启、回滚和用户文件保留。
 
 [mpv 客户端头文件](third_party/mpv/client.h) 保留原 ISC 声明；libmpv 二进制、WebView2 和插件使用的第三方工具各自遵循上游许可。
 

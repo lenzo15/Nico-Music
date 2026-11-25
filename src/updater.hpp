@@ -32,6 +32,7 @@ public:
     bool busy() const { return working.load(); }
     std::optional<UpdateStatus> status(bool force = false);
     static bool validAsset(const UpdateDownload& asset);
+    static bool installable(const UpdateDownload& asset, const std::string& currentVersion);
 
 private:
     std::thread worker;

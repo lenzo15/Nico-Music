@@ -3,6 +3,8 @@
 #include <array>
 #include <bcrypt.h>
 #include <cwctype>
+#include <charconv>
+#include <string_view>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -210,6 +212,32 @@ bool Updater::validAsset(const UpdateDownload& asset) {
     return path.substr(slash + 1) == filename;
 }
 
+bool Updater::installable(const UpdateDownload& asset, const std::string& currentVersion) {
+    if (!validAsset(asset) || asset.sha256.empty()) return false;
+    const auto name = lower(std::wstring(asset.name.begin(), asset.name.end()));
+    bool windows = false;
+    for (const std::wstring suffix : {L"windows-x64.zip", L"win-x64.zip", L"windows_x64.zip", L"win_x64.zip", L"windowsx64.zip", L"winx64.zip"})
+        if (name.size() >= suffix.size() && name.compare(name.size()-suffix.size(), suffix.size(), suffix) == 0) windows = true;
+    if (!windows) return false;
+    auto version = [](std::string_view s, std::array<unsigned,3>& parts) {
+        if (!s.empty() && s.front() == 'v') s.remove_prefix(1);
+        for (int i = 0; i < 3; ++i) {
+            auto dot = s.find('.');
+            auto part = s.substr(0, dot);
+            if (part.empty() || (part.size() > 1 && part[0] == '0')) return false;
+            auto end = part.data() + part.size();
+            auto parsed = std::from_chars(part.data(), end, parts[i]);
+            if (parsed.ec != std::errc{} || parsed.ptr != end || (dot == s.npos) != (i == 2)) return false;
+            if (i < 2) s.remove_prefix(dot + 1);
+        }
+        return true;
+    };
+    auto end = asset.url.rfind('/');
+    auto begin = asset.url.rfind('/', end-1) + 1;
+    std::array<unsigned,3> next{}, current{};
+    return version(std::string_view(asset.url).substr(begin, end-begin), next) && version(currentVersion, current) && next > current;
+}
+
 bool Updater::download(const UpdateDownload& asset, const std::filesystem::path& destination) {
     if (!validAsset(asset) || destination.empty() || lower(destination.extension().wstring()) != L".zip")
         throw std::runtime_error("无效的更新安装包或保存路径");
@@ -228,7 +256,7 @@ bool Updater::download(const UpdateDownload& asset, const std::filesystem::path&
             try {
                 interrupted();
                 File file(CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
-                if (file.get() == INVALID_HANDLE_VALUE) throw std::runtime_error("无法创建下载文件，请选择可写入的位置");
+                if (file.get() == INVALID_HANDLE_VALUE) throw std::runtime_error("无法创建下载文件，请检查目录写入权限");
                 created = true;
                 Sha256 digest;
                 get(std::wstring(asset.url.begin(), asset.url.end()), L"application/octet-stream", [&](const char* data, DWORD count) {

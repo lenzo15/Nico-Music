@@ -33,7 +33,7 @@ function selectUpdateAsset(release) {
         typeof asset.browser_download_url !== "string" ||
         asset.browser_download_url !== `${prefix}${encodeURIComponent(release.tag_name)}/${encodeURIComponent(asset.name)}` ||
         asset.browser_download_url.length > 4096 || /[\s\\"<>?#\x00-\x1f\x7f-\uffff]/.test(asset.browser_download_url)) return false;
-    return !asset.digest || /^sha256:[a-f0-9]{64}$/i.test(asset.digest);
+    return /^sha256:[a-f0-9]{64}$/i.test(asset.digest);
   }) || null;
 }
 function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
@@ -52,12 +52,12 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
     el("cancelUpdate").hidden = phase !== "downloading";
     el("cancelUpdate").disabled = false;
     el("settingsButton").dataset.update = String(available);
-    el("settingsButton").title = available ? `设置（发现新版本 ${latest.tag_name}，可在关于中下载）` : "设置";
+    el("settingsButton").title = available ? `设置（发现新版本 ${latest.tag_name}，可在关于中更新）` : "设置";
   }
   function releaseStatus() {
     if (!latest) return "暂无正式发布版本";
     if (!available) return `当前已是最新版本（最新正式版 ${latest.tag_name}）`;
-    return `发现新版本 ${latest.tag_name}${asset ? "，可直接下载" : "，暂未提供 Windows x64 ZIP 安装包"}`;
+    return `发现新版本 ${latest.tag_name}${asset ? "，点击更新后将自动安装并重启" : "，暂未提供可校验的 Windows x64 ZIP 安装包"}`;
   }
   function useRelease(release, announce = true) {
     if (release !== null) {
@@ -83,7 +83,6 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
     }
     lastAttempt = now(); busy = true; phase = "checking";
     el("downloadProgress").hidden = true;
-    el("showDownload").hidden = true;
     text("正在检查 GitHub 最新正式版…"); controls();
     send("check-update");
   }
@@ -95,11 +94,10 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
   el("checkUpdates").onclick = check;
   el("downloadUpdate").onclick = () => {
     if (busy || !asset || !available || !desktop) return;
-    busy = true; phase = "choosing";
-    el("showDownload").hidden = true;
+    busy = true; phase = "preparing";
     el("downloadProgress").hidden = true;
-    text("请选择更新安装包的保存位置…"); controls();
-    const hash = asset.digest ? asset.digest.slice(7).toLowerCase() : "-";
+    text("正在准备更新…"); controls();
+    const hash = asset.digest.slice(7).toLowerCase();
     send(`download-update ${asset.browser_download_url} ${asset.size} ${hash} ${asset.name}`);
   };
   el("cancelUpdate").onclick = () => {
@@ -108,7 +106,6 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
     el("cancelUpdate").disabled = true;
     text("正在取消下载…");
   };
-  el("showDownload").onclick = () => send("show-update");
   if (!desktop) text("请在 NicoMusic 桌面窗口中检查和下载更新");
   controls();
   function begin(version) {
@@ -132,7 +129,7 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
   function status(state) {
     if (state.phase === "idle") return;
     phase = state.phase;
-    busy = phase === "checking" || phase === "downloading";
+    busy = ["checking", "downloading", "installing"].includes(phase);
     if (phase === "checking") text("正在检查 GitHub 最新正式版…");
     else if (phase === "checked") {
       try {
@@ -153,14 +150,12 @@ function createUpdateChecker({send, notify, desktop, storage, now = Date.now}) {
       el("updateProgress").value = received;
       el("downloadBytes").textContent = `${(received / 1024 ** 2).toFixed(1)} / ${(total / 1024 ** 2).toFixed(1)} MB（${percent}%）`;
       text("正在下载更新，完成后将校验安装包…");
-    } else if (phase === "downloaded") {
+    } else if (phase === "installing") {
       el("downloadProgress").hidden = true;
-      el("showDownload").hidden = false;
-      text(`下载完成：${state.file}。请退出播放器后解压更新，音乐库不会被修改。`);
-      notify("更新安装包已下载并校验，可在「设置 → 关于」中打开保存位置");
-    } else if (phase === "save-cancelled" || phase === "cancelled") {
+      text("正在解压并检查更新，完成后播放器将自动重启…");
+    } else if (phase === "cancelled") {
       el("downloadProgress").hidden = true;
-      text(phase === "save-cancelled" ? "已取消选择保存位置，可重新下载" : "已取消下载，临时文件已删除");
+      text("已取消下载，临时文件已删除");
     } else if (phase === "check-error" || phase === "download-error") {
       el("downloadProgress").hidden = true;
       text(state.error || "更新任务失败，请重试");

@@ -10,7 +10,7 @@ const asset = {name: "NicoMusic-v2.0.0-windows-x64.zip", state: "uploaded", size
 const release = (tag = "v2.0.0", assets = [asset]) => ({tag_name: tag, draft: false, prerelease: false, assets});
 function setup({data = {}, desktop = true, brokenStorage = false} = {}) {
   const controls = {}, sent = [], notices = [];
-  for (const id of ["checkUpdates", "downloadUpdate", "cancelUpdate", "showDownload", "autoUpdate", "settingsButton",
+  for (const id of ["checkUpdates", "downloadUpdate", "cancelUpdate", "autoUpdate", "settingsButton",
     "updateStatus", "appVersion", "downloadProgress", "updateProgress", "downloadBytes"]) {
     controls[id] = {hidden: false, disabled: false, textContent: "", dataset: {}};
   }
@@ -119,7 +119,7 @@ test("selects only trusted Windows x64 ZIPs and rejects source, unsafe URLs and 
     {browser_download_url: "http://github.com/lenzo15/Nico-Music/releases/download/x.zip"},
     {browser_download_url: prefix + "x.zip\n"}, {browser_download_url: prefix + "../../other/windows-x64.zip"},
     {name: "../windows-x64.zip"},
-    {name: "windows-arm64.zip"}, {name: "windows-x64.exe"}, {digest: "sha256:bad"},
+    {name: "windows-arm64.zip"}, {name: "windows-x64.exe"}, {digest: "sha256:bad"}, {digest: null},
     {size: 0}, {size: 3 * 1024 ** 3}, {state: "new"}]) {
     assert.equal(c.selectUpdateAsset(release("v2.0.0", [{...asset, ...changed}])), null);
   }
@@ -128,7 +128,7 @@ test("selects only trusted Windows x64 ZIPs and rejects source, unsafe URLs and 
   assert.equal(missing.controls.downloadUpdate.hidden, true);
 });
 
-test("download uses the native bridge without a browser, shows progress, cancels and opens its location", () => {
+test("download uses the native bridge without a browser, shows progress, cancels and waits for the native install handoff", () => {
   const h = setup(); h.begin(); h.checked(); h.controls.downloadUpdate.onclick();
   assert.equal(h.sent[1], `download-update ${asset.browser_download_url} ${asset.size} ${"a".repeat(64)} ${asset.name}`);
   assert.equal(h.controls.checkUpdates.disabled, true);
@@ -147,18 +147,18 @@ test("download uses the native bridge without a browser, shows progress, cancels
   h.controls.downloadUpdate.onclick(); h.state("download-error", {error: "SHA-256 校验失败"});
   assert.match(h.controls.updateStatus.textContent, /校验失败/);
   assert.equal(h.controls.downloadUpdate.disabled, false);
-  h.controls.downloadUpdate.onclick(); h.state("downloaded", {file: "C:\\下载\\NicoMusic.zip"});
-  assert.equal(h.controls.showDownload.hidden, false);
-  assert.match(h.controls.updateStatus.textContent, /退出播放器后解压/);
-  h.controls.showDownload.onclick();
-  assert.equal(h.sent.at(-1), "show-update");
+  h.controls.downloadUpdate.onclick(); h.state("installing");
+  assert.equal(h.controls.cancelUpdate.hidden, true);
+  assert.match(h.controls.updateStatus.textContent, /自动重启/);
+  assert.equal(h.controls.downloadUpdate.disabled, true);
+  assert.equal(h.controls.checkUpdates.disabled, true);
+  h.state("download-error", {error:"安装目录不可写"});
+  assert.equal(h.controls.downloadUpdate.disabled, false);
+  assert.match(h.controls.updateStatus.textContent, /目录不可写/);
 });
 
-test("save-dialog cancellation restores buttons; corrupt cache falls back to a network check", () => {
-  const h = setup({data: {"nico.updateCheck.v1": "{invalid"}}); h.begin(); h.checked();
-  h.controls.downloadUpdate.onclick(); h.state("save-cancelled");
-  assert.equal(h.controls.downloadUpdate.disabled, false);
-  assert.equal(h.controls.checkUpdates.disabled, false);
-  assert.equal(h.controls.cancelUpdate.hidden, true);
+test("corrupt cache falls back to a network check", () => {
+  const h = setup({data: {"nico.updateCheck.v1": "{invalid"}}); h.begin();
+  assert.deepEqual(h.sent, ["check-update"]);
   assert.equal(h.checker.message({playing: true}), false);
 });

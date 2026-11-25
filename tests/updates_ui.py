@@ -64,9 +64,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js('!$("downloadProgress").hidden && $("downloadBytes").textContent.includes("25%")')
         js('$("cancelUpdate").click()')
         assert js('hostMessages.at(-1)==="cancel-update"')
-        js('nativeMessage({updater:{phase:"downloaded",file:"C:/Downloads/NicoMusic.zip"}}); $("showDownload").click()')
-        assert js('hostMessages.at(-1)==="show-update" && window.openCount===0')
-        print('OK: full-page native bridge flow, fixed volume commands/repeat, compact settings without media-key help, About version/update controls, progress/cancel/reveal; controls reachable at normal/minimum size')
+        js('nativeMessage({updater:{phase:"cancelled"}}); $("downloadUpdate").click(); nativeMessage({updater:{phase:"installing"}})')
+        assert js('$("updateStatus").textContent.includes("自动重启") && $("downloadUpdate").disabled && !$("showDownload") && window.openCount===0')
+        print('OK: full-page native bridge flow, fixed volume commands/repeat, compact settings without media-key help, About version/update controls, progress/cancel/install; controls reachable at normal/minimum size')
     finally:
         if ws:
             try: cdp('Browser.close')

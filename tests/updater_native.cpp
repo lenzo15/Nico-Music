@@ -1,5 +1,6 @@
 // Optional harness: configure with -DNICOMUSIC_UPDATE_TESTS=ON.
 #include "../src/updater.hpp"
+#include "../src/update_install.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -29,11 +30,30 @@ int wmain(int argc, wchar_t** argv) {
             auto bad = sample; bad.name = name;
             if (Updater::validAsset(bad)) throw std::runtime_error("unsafe filename accepted");
         }
+        if (!Updater::installable(sample, "0.9.99") || Updater::installable(sample, "1.0.0") || Updater::installable(sample, "1.0.1"))
+            throw std::runtime_error("install version gate");
+        auto unsignedZip = sample; unsignedZip.sha256.clear();
+        auto source = sample; source.name = "source.zip"; source.url.replace(source.url.rfind('/')+1, std::string::npos, source.name);
+        if (Updater::installable(unsignedZip, "0.1.0") || Updater::installable(source, "0.1.0")) throw std::runtime_error("install asset gate");
         auto bad = sample; bad.size = 0;
         if (Updater::validAsset(bad)) throw std::runtime_error("zero size accepted");
         bad = sample; bad.sha256 = "invalid";
         if (Updater::validAsset(bad)) throw std::runtime_error("invalid digest accepted");
         if (argc == 1) { std::cout << "OK: native asset validation\n"; return 0; }
+        // Test-only handoff: the fixture is private and contains no installed player.
+        if (std::wstring(argv[1]) == L"--fixture-install" && argc == 4) {
+            std::filesystem::path root(argv[2]);
+            if (!std::filesystem::is_regular_file(root / L"fixture-only")) throw std::runtime_error("missing fixture marker");
+            UpdateInstall job(root, ascii(argv[3]));
+            std::filesystem::copy_file(root / L"fixture.zip", job.package());
+            job.start();
+            auto until = std::chrono::steady_clock::now() + std::chrono::seconds(40);
+            while (!job.readyToExit()) {
+                if (std::chrono::steady_clock::now() > until) throw std::runtime_error("helper timeout");
+                Sleep(25);
+            }
+            return 0; // unlock the fixture and let the helper apply the package
+        }
         Updater updater;
         const bool check = std::wstring(argv[1]) == L"--check";
         const bool cancelProgress = argc > 7 && std::wstring(argv[7]) == L"--cancel-progress";

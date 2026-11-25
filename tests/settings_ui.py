@@ -226,7 +226,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                 assert js(geometry) == baseline, (width, height, tab)
             js("$('settingsTabAbout').click(); nativeMessage({updater:{phase:'downloading',received:512,total:1024}})")
             assert js(geometry) == baseline
-            js("nativeMessage({updater:{phase:'downloaded',file:'C:/Downloads/'+'更新'.repeat(300)+'.zip'}})")
+            js("nativeMessage({updater:{phase:'download-error',error:'更新失败：'+'更新'.repeat(300)}})")
             assert js(geometry) == baseline
             assert js("$('settingsBody').scrollHeight>$('settingsBody').clientHeight && $('settings').scrollTop===0")
             js("$('settingsTabGeneral').click()")
