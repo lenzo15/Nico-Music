@@ -365,10 +365,7 @@ main {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  padding: 14px clamp(24px, 3.4vw, 54px);
-  border-bottom: 1px solid var(--line);
-  height: 86px;
-  border-bottom: 0;
+  padding: 24px clamp(24px, 3.4vw, 54px) 6px;
 }
 .crumb {
   display: flex;
@@ -971,7 +968,7 @@ aside { min-height: 0; overflow-y: auto; }
 .topbar { gap: 12px; }
 .topbar button { flex: none; }
 .collectionTools, #batchBar { display: flex; flex: none; align-items: center; gap: 10px; flex-wrap: wrap; }
-.collectionTools { justify-content: space-between; margin: 18px 0 14px; }
+.collectionTools { justify-content: space-between; margin: 0 0 14px; }
 .collectionTools .filter { flex: 1; min-width: 120px; margin: 0; }
 #batchToggle[aria-pressed="true"] { color: var(--red-dark); background: #fbe8ea; }
 #batchBar {
