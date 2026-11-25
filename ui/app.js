@@ -172,7 +172,9 @@ function select(p) {
 document
   .querySelectorAll("[data-page]")
   .forEach((b) => (b.onclick = () => select(b.dataset.page)));
+let pendingImport = null;
 function addDialog() {
+  if (pendingImport) return toast("正在添加音乐");
   const d = $("addDialog");
   $("url").setCustomValidity("");
   d.showModal();
@@ -227,6 +229,7 @@ function localURI(input) {
 }
 $("addForm").onsubmit = (e) => {
   e.preventDefault();
+  if (pendingImport) return;
   let url = $("url").value.trim();
   try {
     const local = localURI(url);
@@ -244,9 +247,10 @@ $("addForm").onsubmit = (e) => {
     $("url").reportValidity();
     return;
   }
-  send(
-    `${e.submitter?.value === "add" ? "add" : "start"} ${url} ${$("name").value.trim()}`,
-  );
+  const command = `${e.submitter?.value === "add" ? "add" : "start"} ${url} ${$("name").value.trim()}`;
+  if (new TextEncoder().encode(command).length > 12000) return toast("链接或曲名过长");
+  if (bridge) pendingImport = {page, url};
+  send(command);
 };
 $("url").oninput = () => $("url").setCustomValidity("");
 $("projectLink").onclick = (e) => {
@@ -654,18 +658,31 @@ bridge?.addEventListener("message", (e) => {
     catch { toast("歌单更新失败"); }
   }
   if (msg.error) {
+    if (!msg.imported) pendingImport = null;
     if ($("addDialog").open) {
       $("url").setCustomValidity(msg.error);
       $("url").reportValidity();
     } else toast(msg.error);
   }
-  if (msg.imported) {
+  if (msg.imported && pendingImport) {
+    const {page: target, url} = pendingImport;
+    pendingImport = null;
+    let notice = "已加入音乐库";
+    if (target === "likes") {
+      notice = updateLikes([url], true) ? "已加入我喜欢的" : "";
+    } else if (target !== "library" && lists?.find(target)) {
+      try {
+        lists.addSongs([url], new Set([target]));
+        rowSignature = "";
+        notice = "已加入歌单";
+      } catch { notice = "已加入音乐库，但无法保存到歌单"; }
+    }
     if ($("addDialog").open) {
       $("addDialog").close();
       $("addForm").reset();
-      select("library");
+      select(page);
     }
-    if (msg.imported === "add") toast("已加入歌单");
+    if (notice) toast(notice);
   }
   sync();
 });

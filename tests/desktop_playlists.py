@@ -246,7 +246,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         # Deliver a disk-backed File, not a synthetic blob or a basename.
         local = media / '本地 #100% Music.wav'
         shutil.copyfile(media / 'B.wav', local)
-        js('addDialog()')
+        js("const importList = page; $('topAdd').click()")
         x, y = js("(() => {const r=$('localDrop').getBoundingClientRect(); return [r.x+r.width/2,r.y+r.height/2]})()")
         for kind in ('dragEnter', 'dragOver', 'drop'):
             cdp('Input.dispatchDragEvent', {'type': kind, 'x': x, 'y': y, 'data': {
@@ -255,7 +255,12 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         js("$('addForm').querySelector('[value=start]').click()")
         until(lambda: js("!$('addDialog').open && state.playing && source(current())==='本地音乐' && current().name==='本地 #100% Music'"))
         assert local.as_uri() in (profile / 'library.tsv').read_text(encoding='utf8')
-        print('OK: local file drop, Unicode path, playback and persistence')
+        assert js("page === importList && currentList().urls.includes(current().url) && document.querySelectorAll('.row').length === 1")
+        # Re-import the same library URL in Likes: add membership without duplicating a track.
+        js("const importedUrl = current().url; select('likes'); $('topAdd').click(); $('url').value = importedUrl; $('addForm').querySelector('[value=add]').click()")
+        until(lambda: js("!$('addDialog').open && page === 'likes' && fav.has(importedUrl)"))
+        assert js("tracks.filter(t => t.url === importedUrl).length === 1 && JSON.parse(localStorage.getItem('likes')).includes(importedUrl) && lists.find(importList).urls.includes(importedUrl)")
+        print('OK: local file drop, Unicode path, playback, playlist and Likes import destinations')
         if '--window' in sys.argv:
             user32 = ctypes.windll.user32
             windows = []
