@@ -164,7 +164,6 @@ function select(p) {
   $("heading").textContent = list?.name || (page === "likes" ? "我喜欢的" : "全部音乐");
   batch = false; picked.clear();
   $("deleteList").hidden = !list;
-  $("topAdd").hidden = !!list;
   $("query").value = "";
   rowSignature = "";
   $("rows").scrollTop = 0;

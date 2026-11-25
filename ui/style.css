@@ -364,7 +364,6 @@ main {
   display: flex;
   flex: none;
   align-items: center;
-  justify-content: space-between;
   padding: 24px clamp(24px, 3.4vw, 54px) 22px;
 }
 .crumb {
@@ -462,7 +461,7 @@ p {
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
-  margin: 5px 0;
+  margin: 5px auto 5px 0;
 }
 header p,
 dialog p {
