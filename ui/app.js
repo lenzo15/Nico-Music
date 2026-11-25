@@ -666,22 +666,28 @@ bridge?.addEventListener("message", (e) => {
     }
     catch { toast("歌单更新失败"); }
   }
-  if (msg.error) {
-    if (!msg.imported) pendingImport = null;
-    if ($("addDialog").open) {
-      $("url").setCustomValidity(msg.error);
-      $("url").reportValidity();
-    } else toast(msg.error);
+  if (msg.collectionPending && pendingImport) pendingImport.collection = true;
+  $("importStatus").hidden = !(pendingImport?.collection && !msg.imported && !msg.importFailed);
+  if (msg.error && !msg.imported) {
+    if (msg.importFailed || !pendingImport?.collection) {
+      pendingImport = null;
+      if ($("addDialog").open) {
+        $("url").setCustomValidity(msg.error);
+        $("url").reportValidity();
+        $("url").setCustomValidity(""); // Allow retry after a transient provider error.
+      } else toast(msg.error);
+    } else toast(msg.error); // An unrelated playback error is not an import response.
   }
   if (msg.imported && pendingImport) {
     const {page: target, url} = pendingImport;
+    const urls = msg.importedUrls || [url];
     pendingImport = null;
     let notice = "已加入音乐库";
     if (target === "likes") {
-      notice = updateLikes([url], true) ? "已加入我喜欢的" : "";
+      notice = updateLikes(urls, true) ? "已加入我喜欢的" : "";
     } else if (target !== "library" && lists?.find(target)) {
       try {
-        lists.addSongs([url], new Set([target]));
+        lists.addSongs(urls, new Set([target]));
         rowSignature = "";
         notice = "已加入歌单";
       } catch { notice = "已加入音乐库，但无法保存到歌单"; }
@@ -691,7 +697,8 @@ bridge?.addEventListener("message", (e) => {
       $("addForm").reset();
       select(page);
     }
-    if (notice) toast(notice);
+    if (notice && msg.importedUrls) notice += `（${urls.length} 首）`;
+    if (msg.error || notice) toast([notice, msg.error].filter(Boolean).join("；"));
   }
   sync();
 });

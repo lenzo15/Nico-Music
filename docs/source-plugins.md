@@ -53,4 +53,13 @@ file_extensions=.bmlink
 - 后台查标题、封面时宿主发送 `script-message bm-metadata <token> <带前缀的链接>`。对应插件异步应答 `script-message bm-metadata-result <token> <标题> <封面 URL>`；失败可回两个空串。宿主匹配 token，超时放弃该次请求，不阻塞其他来源。
 - 提供的 B 站/电台适配器用 `mp.get_script_directory()` 定位本包的可执行文件与 `extractors/`，以参数数组调用私有工具，不使用 shell、不读取 yt-dlp 用户配置，只加载本包的提取器。插件自行选择 `bestaudio/best` 和 HTTP(S) 媒体流。B 站提取器负责移动端/分享链接，并复用工具自带的 B 站客户端。
 
+### 一个链接导入多首歌（可选）
+
+在 API 2 清单中声明 `collection_paths=/lists/,/channel/collectiondetail`。仅对本来源的 HTTP(S) 链接检查路径（不含查询和片段），按路径段匹配；不声明时仍按单曲处理。B 站适配器支持个人空间的合集、系列列表页（例如 `https://space.bilibili.com/<UID>/lists/<ID>?type=season`）。请复制列表页而不是其中某一集的视频页。
+
+- 命中后宿主发送 `script-message bm-collection <token> <带前缀的合集链接>`。只处理属于本来源的前缀。
+- 返回一次 `script-message bm-collection-result <token> <rows> <error>`。成功时 error 为空，rows 是一个字符串参数：每行 `原始 HTTP(S) 曲目链接<TAB>标题`（标题可为空），行间用 LF 分隔。不要返回临时播放地址；标题中的控制符须替换为空格。失败时 rows 为空，error 为简短的错误说明。
+- 最多 500 条、1 MiB，60 秒超时。宿主校验整批，拒绝空列表、不受支持的链接和嵌套合集；按返回顺序去重，一次保存到音乐库。已有歌曲也会加入本次的目标歌单或收藏。“加入并播放”使用本次导入顺序。曲名输入仅适用于单曲。
+- 测试：`python tests/collection_import.py build/Release/NicoMusicCLI.exe` 使用临时插件和数据目录，不访问网络。
+
 CLI 输入 `sources` 查看已注册来源；`open @bilibili` 打开主页，`search @bilibili 关键词` 打开搜索页。离线集成测试：`python tests/source_plugins.py build/Release/NicoMusicCLI.exe`（该测试需要旁边有完整的 `plugins/bilibili` 包）。

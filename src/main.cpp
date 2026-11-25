@@ -42,6 +42,23 @@ class Terminal : public Station {
         Station::play(i);
         cout << "已选择 #" << i + 1 << ' ' << entries()[i].name << '\n';
     }
+    void importMusic(const string &args, bool start) {
+        if (beginCollection(args)) {
+            cout << "正在解析合集…\n" << std::flush;
+            for (;;) {
+                auto err = errors();
+                if (!err.empty()) cout << err << '\n';
+                if (auto order = finishCollection()) {
+                    cout << "合集已导入 " << order->size() << " 首\n";
+                    if (start) playSelection(order->front(), *order);
+                    return;
+                }
+                Sleep(25);
+            }
+        }
+        int i = add(args);
+        if (start) play(i);
+    }
     int add(const string &args) {
         int i = Station::add(args);
         cout << "歌单 #" << i + 1 << ' ' << entries()[i].name << '\n';
@@ -107,9 +124,9 @@ class Terminal : public Station {
             url.replace(url.find("{query}"), 7, encode(query));
             browse(url);
         } else if (cmd == "add")
-            add(arg);
+            importMusic(arg, false);
         else if (urlOK(cmd) || !SourceRegistry::localFile(cmd).empty())
-            play(add(trim(input)));
+            importMusic(trim(input), true);
         else if (cmd == "list") {
             cout << "我的歌单 · " << count() << " 首\n";
             int current = active();

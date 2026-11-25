@@ -88,6 +88,25 @@ void Player::requestMetadata(const std::string& url, const std::string& target) 
     deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 }
 
+void Player::requestCollection(const std::string& target) {
+    if (!collectionToken.empty() || collectionReply) throw std::runtime_error("正在导入另一个合集");
+    auto token = std::to_string(nextRequest++);
+    command({"script-message", "bm-collection", token.c_str(), target.c_str()});
+    collectionToken = token;
+    collectionDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+}
+std::optional<std::string> Player::takeCollection() {
+    if (!collectionReply) {
+        if (collectionToken.empty() || std::chrono::steady_clock::now() < collectionDeadline) return {};
+        collectionToken.clear();
+        throw std::runtime_error("合集解析超时，请重试");
+    }
+    auto reply = std::move(*collectionReply);
+    collectionReply.reset();
+    if (!reply.error.empty()) throw std::runtime_error(reply.error);
+    return std::move(reply.rows);
+}
+
 std::string Player::poll(std::vector<Metadata>& updates) {
     std::string result;
     for (;;) {
@@ -98,6 +117,13 @@ std::string Player::poll(std::vector<Metadata>& updates) {
         }
         if (ev->event_id == MPV_EVENT_CLIENT_MESSAGE) {
             auto* msg = static_cast<const mpv_event_client_message*>(ev->data);
+            if (!collectionToken.empty() && msg->num_args == 4 &&
+                !std::strcmp(msg->args[0], "bm-collection-result") && collectionToken == msg->args[1]) {
+                collectionToken.clear();
+                if (std::strlen(msg->args[2]) > 1024 * 1024 || std::strlen(msg->args[3]) > 1024)
+                    collectionReply = CollectionReply{"", "合集解析结果过大"};
+                else collectionReply = CollectionReply{msg->args[2], msg->args[3]};
+            }
             if (metadataBusy() && msg->num_args == 4 && !std::strcmp(msg->args[0], "bm-metadata-result")
                 && pendingToken == msg->args[1]) {
                 if (*msg->args[2] || *msg->args[3]) updates.push_back({pendingUrl, msg->args[2], msg->args[3]});

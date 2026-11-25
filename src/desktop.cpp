@@ -258,10 +258,27 @@ void updatePromptResult(const string& phase, const string& error = {}) {
     const auto json = "{\"updater\":{\"phase\":" + quotedJson(phase) + ",\"error\":" + quotedJson(error) + "}}";
     view->PostWebMessageAsJson(wide(json).c_str());
 }
-void publish(bool library, string err = {}, const string &imported = {}, bool queueChanged = false) {
+string collectionMode;
+void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false) {
     if (!view || !ready)
         return;
     auto audioError = station->errors(&library);
+    std::vector<int> importedTracks;
+    if (!collectionMode.empty()) {
+        try {
+            if (auto order = station->finishCollection()) {
+                importedTracks = std::move(*order);
+                imported = collectionMode;
+                collectionMode.clear();
+                library = true;
+                if (imported == "start") station->playSelection(importedTracks.front(), importedTracks);
+            }
+        } catch (const std::exception &e) {
+            collectionMode.clear();
+            importFailed = imported.empty(); // Playback can fail after a successful library commit.
+            err = e.what();
+        }
+    }
     auto *p = station->audio();
     int i = station->active();
     auto seconds = [&](const char *prop) {
@@ -324,6 +341,16 @@ void publish(bool library, string err = {}, const string &imported = {}, bool qu
         err = audioError;
     if (!err.empty())
         data += ",\"error\":" + quotedJson(err);
+    if (!collectionMode.empty()) data += ",\"collectionPending\":true";
+    if (importFailed) data += ",\"importFailed\":true";
+    if (!importedTracks.empty()) {
+        data += ",\"importedUrls\":[";
+        for (size_t n = 0; n < importedTracks.size(); ++n) {
+            if (n) data += ',';
+            data += quotedJson(station->entries()[importedTracks[n]].url);
+        }
+        data += ']';
+    }
     if (!imported.empty())
         data += ",\"imported\":" + quotedJson(imported);
     view->PostWebMessageAsJson(wide(data + "}").c_str());
@@ -432,6 +459,12 @@ void handle(const string &message) {
             publishWindowState();
             changed = true;
         } else if (cmd == "start" || cmd == "add") {
+            if (!collectionMode.empty()) throw std::runtime_error("正在导入另一个合集");
+            if (station->beginCollection(arg)) {
+                collectionMode = cmd;
+                publish(false);
+                return;
+            }
             int i = station->add(arg);
             changed = true;
             if (cmd == "start")
@@ -487,7 +520,7 @@ void handle(const string &message) {
         }
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
-        publish(true, e.what());
+        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start");
     }
 }
 void resize() {

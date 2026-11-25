@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 using std::cout;
@@ -369,6 +370,56 @@ public:
         std::vector<int> order(count());
         std::iota(order.begin(), order.end(), 0);
         playSelection(i, order, true);
+    }
+    bool beginCollection(const string &args) {
+        auto url = split(args).first;
+        if (!urlOK(url) || !sources.isCollection(url)) return false;
+        engine().requestCollection(sources.route(url));
+        return true;
+    }
+    // Caller pumps errors() to service mpv events. Commit only a complete, valid reply.
+    std::optional<std::vector<int>> finishCollection() {
+        auto rows = engine().takeCollection();
+        if (!rows) return {};
+        auto copy = tracks;
+        std::unordered_map<string, int> indices;
+        for (int i = 0; i < count(); ++i) indices.emplace(copy[i].url, i);
+        std::unordered_set<string> seen;
+        std::vector<int> order;
+        std::istringstream input(*rows);
+        unsigned lines = 0;
+        for (string line; std::getline(input, line);) {
+            if (++lines > 500) throw std::runtime_error("单个合集最多支持 500 首");
+            auto tab = line.find('\t');
+            auto url = line.substr(0, tab);
+            if (tab == string::npos || !urlOK(url) || sources.route(url).empty() || sources.isCollection(url))
+                throw std::runtime_error("合集包含不支持的歌曲链接");
+            if (!seen.insert(url).second) continue;
+            auto [it, fresh] = indices.emplace(url, static_cast<int>(copy.size()));
+            if (fresh) {
+                auto title = trim(printable(line.substr(tab + 1)));
+                copy.push_back({url, title.empty() ? url : title, std::nullopt});
+            }
+            order.push_back(it->second);
+        }
+        if (order.empty()) throw std::runtime_error("合集中没有可导入的歌曲");
+        const int before = count();
+        if (copy.size() != tracks.size()) {
+            save(copy);
+            tracks.swap(copy);
+            for (int i = before; i < count(); ++i) queueMetadata(tracks[i].url);
+            if (wholeLibrary && queueValid && player->integer("playlist-count") == queueSize()) {
+                queueValid = false;
+                try {
+                    for (int i = before; i < count(); ++i) {
+                        appendForPlayback(*player, tracks[i].url);
+                        queue.push_back(i);
+                    }
+                    queueValid = true;
+                } catch (const std::exception &) { /* Rebuild the queue on the next play request. */ }
+            }
+        }
+        return order;
     }
     int add(const string &args)
     {

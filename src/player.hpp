@@ -21,6 +21,10 @@ class Player {
     uint64_t nextRequest = 1;
     std::string pendingToken, pendingUrl;
     std::chrono::steady_clock::time_point deadline;
+    std::string collectionToken;
+    std::chrono::steady_clock::time_point collectionDeadline;
+    struct CollectionReply { std::string rows, error; };
+    std::optional<CollectionReply> collectionReply;
     decltype(&mpv_get_property) get{};
     decltype(&mpv_get_property_string) getString{};
     decltype(&mpv_free) release{};
@@ -41,6 +45,8 @@ public:
         std::optional<std::string> thumbnail; // absent for title-only playback events
     };
     void requestMetadata(const std::string& url, const std::string& target);
+    void requestCollection(const std::string& target);
+    std::optional<std::string> takeCollection();
     bool metadataBusy() const { return !pendingToken.empty(); }
     std::string poll(std::vector<Metadata>& updates);
 };

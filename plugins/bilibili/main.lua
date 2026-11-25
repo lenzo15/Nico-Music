@@ -20,6 +20,35 @@ local function resolve(target, playing, callback)
     end)
 end
 
+-- Enumerate stable video pages only. Playback continues to resolve each page separately.
+mp.register_script_message('bm-collection', function(token, target)
+    if not accepts(target) then return end
+    local args = {exe, '--ignore-config', '--no-plugin-dirs', '--flat-playlist', '--yes-playlist',
+        '--playlist-end', '501', '--socket-timeout', '8', '--retries', '0', '--extractor-retries', '0',
+        '--encoding', 'utf-8', '-J', '--', target:sub(#prefix + 1)}
+    mp.command_native_async({name='subprocess', args=args, playback_only=false,
+        capture_stdout=true, capture_size=8*1024*1024}, function(ok, res)
+        local function finish(rows, err)
+            mp.commandv('script-message', 'bm-collection-result', token, rows or '', err or '')
+        end
+        local info = ok and res.status == 0 and utils.parse_json(res.stdout)
+        local entries = type(info) == 'table' and info.entries
+        if type(entries) ~= 'table' or #entries == 0 then
+            return finish(nil, '无法读取 B 站合集，请检查链接、网络及访问权限')
+        end
+        if #entries > 500 then return finish(nil, '单个合集最多支持 500 首') end
+        local rows = {}
+        for _, e in ipairs(entries) do
+            local page = type(e) == 'table' and (e.url or e.webpage_url)
+            if not http(page) or not page:match('^https?://www%.bilibili%.com/video/') then
+                return finish(nil, '合集包含无法识别的视频链接')
+            end
+            rows[#rows+1] = page .. '\t' .. (type(e.title) == 'string' and e.title or ''):gsub('[%c]', ' ')
+        end
+        finish(table.concat(rows, '\n'))
+    end)
+end)
+
 mp.register_script_message('bm-metadata', function(token, target)
     if not accepts(target) then return end
     resolve(target, false, function(info)

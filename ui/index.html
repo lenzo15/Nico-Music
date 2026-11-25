@@ -229,11 +229,12 @@
           <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
         </div>
         <input type="file" id="localFile" accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
+        <p id="importStatus" role="status" hidden>正在读取合集，请稍候…</p>
         <label
           >链接或本地路径<input
             id="url"
             type="text"
-            placeholder="https://… 或 C:\Music\歌曲.mp3"
+            placeholder="歌曲链接、合集链接或本地路径"
             required
             maxlength="8192" /></label
         ><label

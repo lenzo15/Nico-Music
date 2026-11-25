@@ -5,7 +5,7 @@
 
 struct MusicSource {
     std::string id, name, home, search;
-    std::vector<std::string> hosts, fileExtensions;
+    std::vector<std::string> hosts, fileExtensions, collectionPaths;
     std::filesystem::path folder;
 };
 
@@ -19,6 +19,7 @@ class SourceRegistry {
     const auto &all() const { return items; }
     const MusicSource *find(const std::string &id) const;
     const MusicSource *match(const std::string &url) const;
+    bool isCollection(const std::string &url) const;
     // Plugin target, unchanged direct media URL, or empty if unsupported.
     std::string route(const std::string &url) const;
     // Validate/decode a drive-local file URI independently of installed plugins.

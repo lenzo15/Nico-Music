@@ -94,6 +94,12 @@ bool readManifest(const fs::path &folder, MusicSource &source) {
         if (dep.front() == '.' || dep.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != string::npos ||
             !fs::is_regular_file(folder / fs::u8path(dep), ec)) return false;
     }
+    std::istringstream paths(fields["collection_paths"]);
+    for (string token; std::getline(paths, token, ',');) {
+        auto path = strip(token);
+        if (path.empty() || path.front() != '/' || path.find_first_of("?#") != string::npos) return false;
+        source.collectionPaths.push_back(path);
+    }
     source.folder = folder;
     std::istringstream csv(fields["hosts"]);
     for (string token; std::getline(csv, token, ',');) {
@@ -151,6 +157,21 @@ const MusicSource *SourceRegistry::match(const std::string &url) const {
                 length = h.size();
             }
     return best;
+}
+bool SourceRegistry::isCollection(const string &url) const {
+    const auto *s = match(url);
+    if (!s || s->collectionPaths.empty() || hostOf(url).empty()) return false;
+    auto end = url.find_first_of("?#");
+    auto start = url.find('/', url.find("://") + 3);
+    if (start == string::npos || start >= end) return false;
+    auto path = url.substr(start, end - start);
+    for (const auto &part : s->collectionPaths) {
+        auto pos = path.find(part);
+        if (pos == string::npos) continue;
+        auto after = pos + part.size();
+        if (part.back() == '/' || after == path.size() || path[after] == '/') return true;
+    }
+    return false;
 }
 fs::path SourceRegistry::localFile(const std::string &url) {
     if (url.rfind("file:///", 0) != 0 || url.size() < 12 || url.size() > 8192 ||
