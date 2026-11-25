@@ -50,16 +50,26 @@ bool inTray = false;
 
 struct PlaybackHotkey {
     int id;
-    UINT key;
+    UINT key, modifiers;
     const char* action;
+    const char* status;
     bool registered = false;
 };
 PlaybackHotkey playbackHotkeys[] = {
-    {1, VK_LEFT, "prev"}, {2, VK_RIGHT, "next"}, {3, VK_SPACE, "toggle"}
+    {1, VK_LEFT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "prev", "prev"},
+    {2, VK_RIGHT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "next", "next"},
+    {3, VK_SPACE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, "toggle", "toggle"},
+    // Built-in media keys are fixed defaults, not editable combination shortcuts.
+    {4, VK_MEDIA_PREV_TRACK, MOD_NOREPEAT, "prev", "mediaPrev"},
+    {5, VK_MEDIA_NEXT_TRACK, MOD_NOREPEAT, "next", "mediaNext"},
+    {6, VK_MEDIA_PLAY_PAUSE, MOD_NOREPEAT, "toggle", "mediaToggle"},
+    // Volume keys intentionally repeat while held; transport keys do not.
+    {7, VK_VOLUME_UP, 0, "volumeUp", "volumeUp"},
+    {8, VK_VOLUME_DOWN, 0, "volumeDown", "volumeDown"}
 };
 void registerPlaybackHotkeys(HWND h) {
     for (auto& key : playbackHotkeys)
-        key.registered = RegisterHotKey(h, key.id, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, key.key) != FALSE;
+        key.registered = RegisterHotKey(h, key.id, key.modifiers, key.key) != FALSE;
 }
 void unregisterPlaybackHotkeys(HWND h) {
     for (auto& key : playbackHotkeys) {
@@ -71,7 +81,7 @@ void publishHotkeys() {
     string json = "{\"hotkeys\":{";
     for (const auto& key : playbackHotkeys) {
         if (json.back() != '{') json += ',';
-        json += string("\"") + key.action + "\":" + (key.registered ? "true" : "false");
+        json += string("\"") + key.status + "\":" + (key.registered ? "true" : "false");
     }
     view->PostWebMessageAsJson(std::wstring(json.begin(), json.end()).append(L"}}").c_str());
 }
@@ -196,6 +206,12 @@ string quotedJson(const string &s) {
         out += (c < 32 ? ' ' : static_cast<char>(c));
     }
     return out + '"';
+}
+bool postPlaybackShortcut(const char* action) {
+    if (!ready || !view) return false;
+    // The page owns initial queue selection and disabled transport boundaries.
+    const auto json = wide(string("{\"shortcut\":\"") + action + "\"}");
+    return SUCCEEDED(view->PostWebMessageAsJson(json.c_str()));
 }
 void publishUpdates(bool force = false) {
     if (!view || !ready || !updater) return;
@@ -428,6 +444,13 @@ void handle(const string &message) {
         } else if (cmd == "volume") {
             auto v = std::to_string(number(arg, 0, 100));
             station->engine().command({"set", "volume", v.c_str()});
+        } else if (cmd == "volume-step") {
+            const int delta = number(arg, -100, 100);
+            auto& audio = station->engine();
+            const auto current = std::clamp<int64_t>(audio.integer("volume", 70), 0, 100);
+            const auto value = std::to_string(std::clamp<int64_t>(current + delta, 0, 100));
+            // Read the engine, not the last UI snapshot, so rapid repeats accumulate.
+            audio.command({"set", "volume", value.c_str()});
         } else if (cmd == "pause" && station->active() >= 0)
             station->engine().command({"cycle", "pause"});
         else if (cmd == "seek" && station->active() >= 0) {
@@ -561,16 +584,26 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         chooseDownload();
         return 0;
     case WM_HOTKEY:
-        if (ready && view) {
-            for (const auto& key : playbackHotkeys) {
-                if (!key.registered || w != static_cast<WPARAM>(key.id)) continue;
-                // Reuse the page's transport actions, including its scoped initial queue.
-                const auto json = wide(string("{\"shortcut\":\"") + key.action + "\"}");
-                view->PostWebMessageAsJson(json.c_str());
-                break;
-            }
+        for (const auto& key : playbackHotkeys) {
+            if (!key.registered || w != static_cast<WPARAM>(key.id)) continue;
+            postPlaybackShortcut(key.action);
+            break;
         }
         return 0;
+    case WM_APPCOMMAND: {
+        // Some keyboard/headset drivers emit application commands instead of
+        // virtual-key events. Consume handled commands so they don't reach the shell.
+        const char* action = nullptr;
+        switch (GET_APPCOMMAND_LPARAM(l)) {
+        case APPCOMMAND_MEDIA_PLAY_PAUSE: action = "toggle"; break;
+        case APPCOMMAND_MEDIA_PREVIOUSTRACK: action = "prev"; break;
+        case APPCOMMAND_MEDIA_NEXTTRACK: action = "next"; break;
+        case APPCOMMAND_VOLUME_UP: action = "volumeUp"; break;
+        case APPCOMMAND_VOLUME_DOWN: action = "volumeDown"; break;
+        }
+        if (action && postPlaybackShortcut(action)) return TRUE;
+        break;
+    }
     case WM_ERASEBKGND:
         if (splash.visible()) return 1;
         break;

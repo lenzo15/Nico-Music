@@ -118,17 +118,17 @@
       </div>
       <div class="transport">
         <div class="transportButtons">
-          <button id="prev" class="icon" title="上一首（Ctrl + Alt + ←）" aria-label="上一首" aria-keyshortcuts="Control+Alt+ArrowLeft">
+          <button id="prev" class="icon" title="上一首（Ctrl + Alt + ← / MediaPrevious）" aria-label="上一首" aria-keyshortcuts="Control+Alt+ArrowLeft MediaTrackPrevious">
             <i data-icon="prev"></i></button
           ><button
             id="toggle"
             class="toggle"
-            title="播放 / 暂停（空格 / Ctrl + Alt + 空格）"
+            title="播放 / 暂停（空格 / Ctrl + Alt + 空格 / MediaPlayPause）"
             aria-label="播放"
-            aria-keyshortcuts="Space Control+Alt+Space"
+            aria-keyshortcuts="Space Control+Alt+Space MediaPlayPause"
           >
             <i data-icon="play"></i></button
-          ><button id="next" class="icon" title="下一首（Ctrl + Alt + →）" aria-label="下一首" aria-keyshortcuts="Control+Alt+ArrowRight">
+          ><button id="next" class="icon" title="下一首（Ctrl + Alt + → / MediaNext）" aria-label="下一首" aria-keyshortcuts="Control+Alt+ArrowRight MediaTrackNext">
             <i data-icon="next"></i>
           </button>
         </div>
@@ -161,6 +161,8 @@
           max="100"
           value="70"
           aria-label="音量"
+          aria-keyshortcuts="AudioVolumeUp AudioVolumeDown"
+          title="播放器音量（VolumeUp / VolumeDown，每次 5%，支持长按）"
         /><span class="divider"></span
         ><button
           class="icon"
@@ -266,6 +268,9 @@
       <h3>播放快捷键</h3>
       <p>上一首：Ctrl + Alt + ←<br />下一首：Ctrl + Alt + →<br />播放 / 暂停：Ctrl + Alt + 空格</p>
       <p id="shortcutHint">组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。</p>
+      <h3>默认媒体键</h3>
+      <p>MediaPlayPause：播放 / 暂停<br />MediaPrevious：上一首<br />MediaNext：下一首<br />VolumeUp / VolumeDown：播放器音量 ±5%</p>
+      <p id="mediaKeyHint">这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键支持长按连续调节。</p>
       <button type="button" id="resetExit" class="subtle">恢复关闭窗口时的询问</button>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>

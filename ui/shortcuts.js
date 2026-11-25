@@ -1,29 +1,55 @@
 "use strict";
-function createPlaybackShortcuts(notify) {
+function createPlaybackShortcuts(notify, adjustVolume) {
   const labels = {
-    prev: {label: "上一首", keys: "Ctrl + Alt + ←"},
-    next: {label: "下一首", keys: "Ctrl + Alt + →"},
-    toggle: {label: "播放 / 暂停", keys: "Ctrl + Alt + 空格"},
+    prev: {label: "上一首", keys: "Ctrl + Alt + ←", media: "MediaPrevious", mediaStatus: "mediaPrev"},
+    next: {label: "下一首", keys: "Ctrl + Alt + →", media: "MediaNext", mediaStatus: "mediaNext"},
+    toggle: {label: "播放 / 暂停", keys: "Ctrl + Alt + 空格", media: "MediaPlayPause", mediaStatus: "mediaToggle"},
   };
   const control = id => document.getElementById(id);
+  // Fixed hardware bindings, independent of the combination-key shortcuts.
+  const media = {MediaPlayPause: "toggle", MediaTrackPrevious: "prev", MediaPrevious: "prev",
+    MediaTrackNext: "next", MediaNext: "next", VolumeUp: "volumeUp", AudioVolumeUp: "volumeUp",
+    VolumeDown: "volumeDown", AudioVolumeDown: "volumeDown"};
   function run(action) {
-    if (Object.hasOwn(labels, action)) control(action).click();
+    if (action === "volumeUp" || action === "volumeDown") adjustVolume(action === "volumeUp" ? 5 : -5);
+    else if (Object.hasOwn(labels, action)) control(action).click();
   }
   function showStatus(registered) {
-    const unavailable = [];
-    for (const [action, {label, keys}] of Object.entries(labels)) {
+    const unavailable = [], unavailableMedia = [];
+    for (const [action, {label, keys, media, mediaStatus}] of Object.entries(labels)) {
       const scope = registered[action] ? "全局" : "仅窗口内";
-      control(action).title = `${label}（${keys}，${scope}）${action === "toggle" ? "；窗口内也可用空格" : ""}`;
+      const mediaScope = registered[mediaStatus] ? "全局" : "仅窗口内";
+      control(action).title = `${label}（${keys}，${scope}；${media}，${mediaScope}）${action === "toggle" ? "；窗口内也可用空格" : ""}`;
       if (!registered[action]) unavailable.push(keys);
+      if (!registered[mediaStatus]) unavailableMedia.push(media);
     }
-    const hint = control("shortcutHint");
+    for (const key of ["volumeUp", "volumeDown"]) {
+      if (!registered[key]) unavailableMedia.push(key === "volumeUp" ? "VolumeUp" : "VolumeDown");
+    }
+    control("volume").title = `播放器音量（VolumeUp：${registered.volumeUp ? "全局" : "仅窗口内"}；VolumeDown：${registered.volumeDown ? "全局" : "仅窗口内"}，每次 5%，支持长按）`;
+    const hint = control("shortcutHint"), mediaHint = control("mediaKeyHint");
     hint.textContent = unavailable.length
-      ? `全局快捷键注册失败：${unavailable.join("、")}，可能已被其他程序占用；这些组合键仍可在播放器窗口内使用。`
+      ? `全局快捷键注册失败：${unavailable.join("、")}，可能已被其他程序占用；播放器收到这些按键时仍可在窗口内使用。`
       : "组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。";
-    if (unavailable.length) notify(hint.textContent);
+    mediaHint.textContent = unavailableMedia.length
+      ? `默认媒体键注册失败：${unavailableMedia.join("、")}，可能已被其他程序占用；窗口收到按键时仍可使用。`
+      : "这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键每次调节播放器音量 5%，支持长按。";
+    if (unavailable.length || unavailableMedia.length)
+      notify([unavailable.length ? hint.textContent : "", unavailableMedia.length ? mediaHint.textContent : ""].filter(Boolean).join(" "));
   }
   document.addEventListener("keydown", e => {
-    if (e.defaultPrevented || e.isComposing) return;
+    if (e.defaultPrevented) return;
+    // Standard DOM names and the MediaPrevious/MediaNext driver aliases.
+    // Explicit media keys remain usable in inputs, IME composition and dialogs.
+    if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      const action = Object.hasOwn(media, e.code) ? media[e.code] : Object.hasOwn(media, e.key) ? media[e.key] : null;
+      if (action) {
+        e.preventDefault();
+        if (!e.repeat || action === "volumeUp" || action === "volumeDown") run(action);
+        return;
+      }
+    }
+    if (e.isComposing) return;
     // Registered global chords are consumed by Windows. This also provides a
     // window-local fallback when another app owns one of the combinations.
     if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {

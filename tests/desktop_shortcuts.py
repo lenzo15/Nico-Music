@@ -26,6 +26,13 @@ user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintyp
 user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 MODIFIERS = 0x4003  # MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
 KEYS = {1: 0x25, 2: 0x27, 3: 0x20}
+MEDIA_KEYS = {4: 0xB1, 5: 0xB0, 6: 0xB3}  # Previous, Next, PlayPause
+VOLUME_KEYS = {7: 0xAF, 8: 0xAE}  # Up, Down (repeat while held)
+ALL_KEYS = {**KEYS, **MEDIA_KEYS, **VOLUME_KEYS}
+
+
+def modifiers(identifier):
+    return MODIFIERS if identifier in KEYS else 0x4000 if identifier in MEDIA_KEYS else 0
 
 
 def until(check, timeout=12):
@@ -102,16 +109,49 @@ try:
                 return cdp('Runtime.evaluate', {'expression': expression, 'returnByValue': True})['result'].get('value')
 
             def hotkey(identifier):
-                assert user32.PostMessageW(hwnd, 0x312, identifier, (KEYS[identifier] << 16) | 3)
+                assert user32.PostMessageW(hwnd, 0x312, identifier, (ALL_KEYS[identifier] << 16) | (modifiers(identifier) & 0xF))
+
+            def media_command(command):
+                assert user32.PostMessageW(hwnd, 0x319, hwnd, command << 16)  # WM_APPCOMMAND
 
             until(lambda: js('document.querySelectorAll(".row").length===3'))
             until(lambda: js('$("toggle").title.includes("全局")'))
             if conflict:
                 assert js('$("next").title.includes("仅窗口内") && $("shortcutHint").textContent.includes("注册失败")')
-            for identifier, key in KEYS.items():
+            for identifier, key in ALL_KEYS.items():
                 if conflict and identifier == 2:
                     continue
-                assert not user32.RegisterHotKey(None, 60, MODIFIERS, key), 'App did not register its chord'
+                assert not user32.RegisterHotKey(None, 60, modifiers(identifier), key), 'App did not register its shortcut'
+            # Fixed volume keys work even before a track starts. Relative engine
+            # commands must accumulate when several messages precede the next UI snapshot.
+            hotkey(7)
+            until(lambda: js('state.volume===75'))
+            hotkey(8)
+            until(lambda: js('state.volume===70'))
+            js("send('volume 50')")
+            until(lambda: js('state.volume===50'))
+            for _ in range(5): hotkey(7)
+            until(lambda: js('state.volume===75'))
+            js("send('volume 98')")
+            until(lambda: js('state.volume===98'))
+            hotkey(7)
+            until(lambda: js('state.volume===100'))
+            hotkey(7)
+            time.sleep(.2)
+            assert js('state.volume===100')
+            js("send('volume 2')")
+            until(lambda: js('state.volume===2'))
+            hotkey(8)
+            until(lambda: js('state.volume===0'))
+            hotkey(8)
+            time.sleep(.2)
+            assert js('state.volume===0')
+            media_command(10)  # APPCOMMAND_VOLUME_UP
+            until(lambda: js('state.volume===5'))
+            media_command(9)   # APPCOMMAND_VOLUME_DOWN
+            until(lambda: js('state.volume===0'))
+            js("send('volume 70')")
+            until(lambda: js('state.volume===70'))
             # An initial native toggle uses the current page, not the whole library.
             js("fav=new Set([tracks[1].url,tracks[2].url]); select('likes')")
             hotkey(3)
@@ -134,17 +174,41 @@ try:
             hotkey(1)  # Disabled previous button at the start of the scoped queue.
             time.sleep(.5)
             assert js('state.index===1')
+            hotkey(6)
+            until(lambda: js('state.paused'))
+            hotkey(6)
+            until(lambda: js('!state.paused && state.playing'))
+            hotkey(5)
+            until(lambda: js('state.index===2 && state.playing'))
+            hotkey(4)
+            until(lambda: js('state.index===1 && state.playing'))
+            media_command(14)  # APPCOMMAND_MEDIA_PLAY_PAUSE
+            until(lambda: js('state.paused'))
+            media_command(14)
+            until(lambda: js('!state.paused && state.playing'))
+            media_command(11)  # APPCOMMAND_MEDIA_NEXTTRACK
+            until(lambda: js('state.index===2 && state.playing'))
+            media_command(12)  # APPCOMMAND_MEDIA_PREVIOUSTRACK
+            until(lambda: js('state.index===1 && state.playing'))
             user32.PostMessageW(hwnd, 0x112, 0xF020, 0)  # SC_MINIMIZE to tray
             until(lambda: not user32.IsWindowVisible(wintypes.HWND(hwnd)))
-            hotkey(3)
+            hotkey(6)
             until(lambda: js('state.paused'))
             assert not user32.IsWindowVisible(wintypes.HWND(hwnd))
-            if not conflict:
-                hotkey(2)
-                until(lambda: js('state.index===2 && state.playing'))
+            media_command(14)
+            until(lambda: js('!state.paused && state.playing'))
+            hotkey(7)
+            until(lambda: js('state.volume===75'))
+            media_command(9)
+            until(lambda: js('state.volume===70'))
+            hotkey(5)
+            until(lambda: js('state.index===2 && state.playing'))
+            hotkey(4)
+            until(lambda: js('state.index===1 && state.playing'))
+            assert not user32.IsWindowVisible(wintypes.HWND(hwnd))
             check_tray_restore(wintypes.HWND(hwnd), until)
             assert js("$('toggle').title.includes('全局')")
-            print('OK: native registration, scoped initial queue, previous/next, toggle, tray' +
+            print('OK: native registration, scoped queue, combination shortcuts, fixed media keys, volume repeat/bounds, WM_APPCOMMAND and tray' +
                   (', conflict warning and local fallback' if conflict else ''))
         finally:
             if ws:
@@ -156,10 +220,10 @@ try:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-        for identifier, key in KEYS.items():
+        for identifier, key in ALL_KEYS.items():
             if conflict and identifier == 2:
                 continue
-            assert user32.RegisterHotKey(None, 60, MODIFIERS, key), 'Shortcut was not released on exit'
+            assert user32.RegisterHotKey(None, 60, modifiers(identifier), key), 'Shortcut was not released on exit'
             user32.UnregisterHotKey(None, 60)
         print('OK: global shortcuts released on exit')
 finally:

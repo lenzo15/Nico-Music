@@ -621,7 +621,7 @@ function sync() {
   $("libCount").textContent = tracks.length;
   renderRows();
 }
-const playbackShortcuts = createPlaybackShortcuts(toast);
+const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
 const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridge,
   storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {

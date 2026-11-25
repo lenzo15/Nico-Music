@@ -43,6 +43,13 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         deadline=time.monotonic()+10
         while not js('document.readyState==="complete" && typeof updateChecker!=="undefined" && typeof nativeMessage==="function"'):
             assert time.monotonic()<deadline, js('[location.href, typeof nativeMessage, typeof hostMessages]'); time.sleep(.05)
+        # The fixed volume bindings must use relative native commands, including
+        # repeated keydown events while an editable control has focus.
+        js('nativeMessage({shortcut:"volumeUp"}); nativeMessage({shortcut:"volumeDown"})')
+        assert js('hostMessages.slice(-2).join(",")==="volume-step 5,volume-step -5"')
+        js('$("query").dispatchEvent(new KeyboardEvent("keydown",{code:"AudioVolumeUp",repeat:true,bubbles:true,cancelable:true}))')
+        assert js('hostMessages.at(-1)==="volume-step 5"')
+        assert js('$("mediaKeyHint").textContent.includes("不参与组合热键编辑")')
         js('nativeMessage({appVersion:"1.0.0"})')
         assert js('hostMessages.includes("check-update")')
         release={'tag_name':'v9.0.0','draft':False,'prerelease':False,'assets':[{'name':'NicoMusic-v9.0.0-windows-x64.zip','state':'uploaded','size':1048576,'digest':'sha256:'+'a'*64,'browser_download_url':'https://github.com/lenzo15/Nico-Music/releases/download/v9.0.0/NicoMusic-v9.0.0-windows-x64.zip'}]}
@@ -59,7 +66,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js('hostMessages.at(-1)==="cancel-update"')
         js('nativeMessage({updater:{phase:"downloaded",file:"C:/Downloads/NicoMusic.zip"}}); $("showDownload").click()')
         assert js('hostMessages.at(-1)==="show-update" && window.openCount===0')
-        print('OK: full-page native bridge flow, About version and update controls, 25% progress, cancel and reveal commands, no browser opens; controls reachable at normal/minimum size')
+        print('OK: full-page native bridge flow, fixed volume commands/repeat, readonly media-key help, About version/update controls, progress/cancel/reveal; controls reachable at normal/minimum size')
     finally:
         if ws:
             try: cdp('Browser.close')
