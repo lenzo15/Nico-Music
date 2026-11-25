@@ -249,6 +249,11 @@ $("addForm").onsubmit = (e) => {
 };
 $("url").oninput = () => $("url").setCustomValidity("");
 $("info").onclick = () => $("about").showModal();
+$("projectLink").onclick = (e) => {
+  if (!bridge) return; // Keep the ordinary link working in browser previews.
+  e.preventDefault();
+  send("project");
+};
 const builtinFileTypes = $("localFile").accept.split(",");
 let sourceSignature;
 function renderSources(sources) {

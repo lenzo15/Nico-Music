@@ -803,6 +803,9 @@ dialog p {
   line-height: 1.75;
   margin-bottom: 18px;
 }
+#projectLink { display: inline-flex; align-items: center; gap: 5px; color: var(--red); text-underline-offset: 3px; }
+#projectLink:hover { text-decoration: none; }
+#projectLink:focus-visible { outline: 3px solid #ed99a0; outline-offset: 3px; }
 dialog label {
   display: block;
   font-size: 12px;

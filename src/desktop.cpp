@@ -351,6 +351,8 @@ void handle(const string &message) {
             const auto s = station->providers().find(arg);
             if (!s) throw std::runtime_error("来源插件未安装");
             browse(s->home);
+        } else if (cmd == "project") {
+            browse("https://github.com/lenzo15/Nico-Music");
         }
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
