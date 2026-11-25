@@ -920,7 +920,9 @@ dialog label {
   font-weight: 600;
   margin-top: 16px;
 }
-#localDrop { margin-top: 10px; padding: 14px; width: 100%; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
+.importTools { display: flex; align-items: center; gap: 8px; }
+#addForm .close { position: static; }
+#localDrop { flex: 1; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
 #localDrop small { margin-left: 6px; color: var(--muted); }
 #localDrop:hover, #addForm.dragging #localDrop { border-color: var(--red); color: var(--red); }
 dialog label small {

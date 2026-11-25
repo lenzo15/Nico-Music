@@ -222,13 +222,12 @@
         <div class="actions"><button id="createWithSong" class="subtle" type="button">新建歌单</button><button id="applyLists" class="primary">保存</button></div>
       </form>
     </dialog>
-    <dialog id="addDialog">
+    <dialog id="addDialog" aria-label="添加音乐">
       <form id="addForm">
-        <button type="button" class="close icon" aria-label="关闭">
-          <i data-icon="close"></i>
-        </button>
-        <h2>添加音乐</h2>
-        <button type="button" id="localDrop" title="选择本地音频文件">选择文件 <small>或将一首音乐拖到这里</small></button>
+        <div class="importTools">
+          <button type="button" id="localDrop" title="选择本地音频文件">选择文件 <small>或将一首音乐拖到这里</small></button>
+          <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
+        </div>
         <input type="file" id="localFile" accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
         <label
           >链接或本地路径<input
