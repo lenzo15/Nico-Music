@@ -7,16 +7,21 @@ function createSettings({shortcuts, send, notify, desktop}) {
   function sendCapture(enabled) { send(`hotkeys-capture ${enabled ? "on" : "off"} ${++captureRequest}`); }
   const dirty = () => JSON.stringify(draft) !== JSON.stringify(shortcuts.bindings());
   const needsSave = () => dirty() || !!loadWarning || retryRegistration;
-  const status = text => { el("hotkeyEditStatus").textContent = text; };
+  const status = (text = "") => {
+    const message = el("hotkeyEditStatus");
+    message.textContent = text; message.hidden = !text;
+  };
   function render() {
     for (const [index, action] of actions.entries()) {
-      el("hotkey-" + action).value = target === index ? recording ? "请按组合键…" : "正在准备录制…" : hotkeyText(draft[index]);
-      el("hotkey-" + action).classList.toggle("isRecording", target === index);
-      el("record-" + action).disabled = !ready || !desktop || saving;
-      el("record-" + action).textContent = target === index ? "取消录制" : "录制";
-      el("clear-" + action).disabled = !ready || !desktop || saving || !draft[index].key;
+      const field = el("hotkey-" + action);
+      field.value = target === index ? recording ? "请按组合键…" : "准备中…" : hotkeyText(draft[index]);
+      field.classList.toggle("isRecording", target === index);
+      field.disabled = !ready || !desktop || saving;
+      field.title = target === index ? "按下 Ctrl 或 Alt 组合键，可加 Shift；Esc 取消，Backspace / Delete 清空" : "点击或按 Enter 修改；Backspace / Delete 清空";
+      field.setAttribute("aria-description", field.title);
     }
     el("saveHotkeys").disabled = !ready || !desktop || saving || !needsSave();
+    el("saveHotkeys").textContent = saving ? "保存中…" : "保存热键";
     el("resetHotkeys").disabled = !ready || !desktop || saving;
     el("cancelHotkeyChanges").disabled = saving || !dirty();
   }
@@ -48,27 +53,31 @@ function createSettings({shortcuts, send, notify, desktop}) {
   el("settingsButton").onclick = () => {
     if (dialog.open) return;
     draft = shortcuts.bindings();
-    status(!desktop ? "请在 NicoMusic 桌面窗口中编辑热键" : loadWarning || (ready ? "点击录制后按下组合键，保存后生效" : "正在读取当前热键…"));
+    status(!desktop ? "请在 NicoMusic 桌面窗口中编辑热键" : loadWarning);
     render(); showTab("hotkeys"); dialog.showModal(); el("settingsTabHotkeys").focus();
   };
   function record(index) {
     if (!ready || saving || !desktop) return;
-    if (target === index) { stopCapture(); status("已取消录制，已尝试恢复原热键注册"); return; }
+    if (target === index) return;
     const alreadyRecording = recording;
     target = index;
-    status("至少使用 Ctrl 或 Alt，可加 Shift；Esc 取消录制，单独按 Backspace / Delete 清除");
+    status();
     render();
     if (!alreadyRecording) sendCapture(true);
-    el("record-" + actions[index]).focus();
+    el("hotkey-" + actions[index]).focus();
   }
   for (const [index, action] of actions.entries()) {
-    el("record-" + action).onclick = () => record(index);
-    el("hotkey-" + action).onclick = () => record(index);
-    el("clear-" + action).onclick = () => {
-      if (!ready || saving || !desktop) return;
-      stopCapture(); draft[index] = {modifiers: 0, key: 0}; render();
-      status("组合键已清除，保存后生效");
+    const field = el("hotkey-" + action);
+    field.onclick = () => record(index);
+    field.onkeydown = event => {
+      if (!ready || saving || !desktop || event.isComposing || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+      if (["Enter", "Space", "Backspace", "Delete"].includes(event.code)) {
+        event.preventDefault(); event.stopPropagation();
+        if (event.code === "Enter" || event.code === "Space") record(index);
+        else { stopCapture(); draft[index] = {modifiers: 0, key: 0}; status(); render(); }
+      }
     };
+    field.onblur = () => { if (target === index) { stopCapture(); status(); } };
   }
   document.addEventListener("keydown", event => {
     if (target < 0 || !dialog.open) return;
@@ -76,10 +85,12 @@ function createSettings({shortcuts, send, notify, desktop}) {
     if (/^(Media|AudioVolume|Volume)/.test(event.code) || /^(Media|AudioVolume|Volume)/.test(event.key)) return;
     if (/^(Control|Alt|Shift|Meta)/.test(event.code)) return;
     if (event.code === "Tab" || event.key === "Tab") {
-      stopCapture(); status("已离开录制，已尝试恢复原热键注册"); return;
+      stopCapture(); status(); return;
     }
     event.preventDefault(); event.stopPropagation();
-    if (event.key === "Escape" || event.code === "Escape") { stopCapture(); status("已取消录制，已尝试恢复原热键注册"); return; }
+    if (event.key === "Escape" || event.code === "Escape" || event.code === "Enter" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+      stopCapture(); status(); return;
+    }
     if (!recording || event.repeat) return;
     if (event.isComposing) { status("请先结束输入法组合，再录制热键"); return; }
     const clearing = ["Backspace", "Delete"].includes(event.code) && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
@@ -89,25 +100,25 @@ function createSettings({shortcuts, send, notify, desktop}) {
       status("这个组合键已用于其他播放操作，请更换"); return;
     }
     draft[target] = binding; stopCapture(); render();
-    status("已录制 " + hotkeyText(binding) + "，点击保存后生效");
+    status();
   }, true);
   el("resetHotkeys").onclick = () => {
     stopCapture(); draft = defaultHotkeyBindings(); render();
-    status(needsSave() ? "默认组合键已填入，点击保存后生效" : "当前已是默认组合键");
+    status();
   };
   el("cancelHotkeyChanges").onclick = () => {
-    stopCapture(); draft = shortcuts.bindings(); render(); status("已放弃未保存的修改");
+    stopCapture(); draft = shortcuts.bindings(); render(); status();
   };
   el("hotkeyForm").onsubmit = event => {
     event.preventDefault();
     if (!ready || !desktop || saving || !needsSave()) return;
-    if (!validHotkeyBindings(draft)) { status("组合键无效或重复，请重新录制"); return; }
-    stopCapture(); saving = true; render(); status("正在保存并注册全局热键…");
+    if (!validHotkeyBindings(draft)) { status("组合键无效或重复，请重新设置"); return; }
+    stopCapture(); saving = true; render(); status();
     send("hotkeys-set " + draft.flatMap(b => [b.modifiers, b.key]).join(" "));
   };
   dialog.addEventListener("close", () => stopCapture());
   window.addEventListener("blur", () => {
-    if (target >= 0) { stopCapture(); status("窗口失去焦点，已取消录制并尝试恢复原热键注册"); }
+    if (target >= 0) { stopCapture(); status(); }
   });
   render();
   return {message(msg) {
@@ -122,11 +133,11 @@ function createSettings({shortcuts, send, notify, desktop}) {
     if (typeof msg.hotkeyCapture === "boolean" && target >= 0 &&
         (!msg.hotkeyCaptureRequest || msg.hotkeyCaptureRequest === captureRequest)) {
       if (msg.hotkeyCapture && dialog.open) { recording = true; render(); }
-      else if (!msg.hotkeyCapture) { stopCapture(false); status("录制已结束，已尝试恢复原热键注册"); }
+      else if (!msg.hotkeyCapture) { stopCapture(false); status(); }
     }
     if (msg.hotkeyResult) {
       saving = false;
-      if (msg.hotkeyResult.ok) { draft = shortcuts.bindings(); status("热键已保存，重启后仍然生效"); notify("热键设置已保存"); }
+      if (msg.hotkeyResult.ok) { draft = shortcuts.bindings(); status(); notify("热键设置已保存"); }
       else status(msg.hotkeyResult.error || "保存失败，原热键未修改");
     } else if (msg.hotkeyWarning && target < 0 && !dirty()) status(msg.hotkeyWarning);
     render();

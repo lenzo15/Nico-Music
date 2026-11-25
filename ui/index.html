@@ -258,11 +258,11 @@
         <h3 class="settingsSectionTitle">播放控制</h3>
         <form id="hotkeyForm">
           <div class="hotkeyGroup">
-          <div class="hotkeyRow"><label for="hotkey-prev">上一首</label><input id="hotkey-prev" readonly aria-label="上一首组合热键" /><button type="button" id="record-prev" class="subtle">录制</button><button type="button" id="clear-prev" class="subtle">清除</button></div>
-          <div class="hotkeyRow"><label for="hotkey-next">下一首</label><input id="hotkey-next" readonly aria-label="下一首组合热键" /><button type="button" id="record-next" class="subtle">录制</button><button type="button" id="clear-next" class="subtle">清除</button></div>
-          <div class="hotkeyRow"><label for="hotkey-toggle">播放 / 暂停</label><input id="hotkey-toggle" readonly aria-label="播放暂停组合热键" /><button type="button" id="record-toggle" class="subtle">录制</button><button type="button" id="clear-toggle" class="subtle">清除</button></div>
+          <div class="hotkeyRow"><label for="hotkey-prev">上一首</label><input id="hotkey-prev" readonly aria-label="上一首组合热键" /></div>
+          <div class="hotkeyRow"><label for="hotkey-next">下一首</label><input id="hotkey-next" readonly aria-label="下一首组合热键" /></div>
+          <div class="hotkeyRow"><label for="hotkey-toggle">播放 / 暂停</label><input id="hotkey-toggle" readonly aria-label="播放暂停组合热键" /></div>
           </div>
-          <p id="hotkeyEditStatus" role="status" aria-live="polite">正在读取当前热键…</p>
+          <p id="hotkeyEditStatus" class="settingsNotice" role="status" aria-live="polite" hidden></p>
           <p id="hotkeyAvailability" class="settingsNotice" role="status" aria-live="polite" hidden></p>
           <div class="settingsActions"><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button></div>
         </form>

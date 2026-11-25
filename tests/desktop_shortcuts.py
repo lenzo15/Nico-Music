@@ -213,7 +213,7 @@ try:
                   (', conflict warning and local fallback' if conflict else ''))
             if not conflict:
                 user32.SetForegroundWindow(hwnd)
-                js("$('settingsButton').click(); $('record-prev').click()")
+                js("$('settingsButton').click(); $('hotkey-prev').click()")
                 until(lambda: js("$('hotkey-prev').value==='请按组合键…'"))
                 assert user32.RegisterHotKey(None, 60, MODIFIERS, KEYS[1]), 'Recording did not release the old combination'
                 user32.UnregisterHotKey(None, 60)
@@ -222,7 +222,7 @@ try:
                     cdp('Input.dispatchKeyEvent', {'type': kind, 'key': 'F8', 'code': 'F8', 'modifiers': 3, 'windowsVirtualKeyCode': 119})
                 until(lambda: js("$('hotkey-prev').value==='Ctrl + Alt + F8'"))
                 js("$('saveHotkeys').click()")
-                until(lambda: js("$('hotkeyEditStatus').textContent.includes('已保存') && playbackShortcuts.bindings()[0].key===119"))
+                until(lambda: js("$('saveHotkeys').disabled && playbackShortcuts.bindings()[0].key===119"))
                 assert (root / 'hotkeys.ini').read_text().splitlines()[0] == '3 119'
                 assert user32.RegisterHotKey(None, 60, MODIFIERS, KEYS[1]), 'Old combination was not released after save'
                 user32.UnregisterHotKey(None, 60)
