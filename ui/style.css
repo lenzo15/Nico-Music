@@ -996,6 +996,10 @@ aside { min-height: 0; overflow-y: auto; }
 .row.pick:hover { background-color: #f9f7f8; }
 .row.pick:has(input:checked) { background-color: #fff1f2; }
 .pick .rowText { cursor: pointer; }
+.pick .reorderGrip { cursor: grab; color: #847e88; }
+.pick .reorderGrip:active { cursor: grabbing; }
+.pick[data-insert="before"] { box-shadow: inset 0 2px var(--red); }
+.pick[data-insert="after"] { box-shadow: inset 0 -2px var(--red); }
 .choices { overflow-y: auto; max-height: min(36vh, 300px); color: var(--muted); }
 .choices label { display: flex; gap: 10px; align-items: center; margin: 0; padding: 9px 6px; cursor: pointer; border-bottom: 1px solid var(--line); color: var(--ink); font-weight: 400; }
 .choices label { min-height: 44px; }

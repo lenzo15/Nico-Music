@@ -345,7 +345,24 @@ $("viewQueue").onclick = () => {
   renderQueue();
   $("queueItems").querySelector('[aria-current="true"]')?.scrollIntoView({block: "nearest"});
 };
+const trackOrder = createTrackOrder(localStorage);
+const visibleUrls = () => visibleOrder().map(i => tracks[i].url);
+const reorderHandles = createReorderHandles($("rows"), {
+  selected: picked, visible: visibleUrls,
+  move(moving, target, after) {
+    if (!batch) return false;
+    const order = moveVisibleTracks(pageOrder().map(i => tracks[i].url), visibleUrls(), moving, target, after);
+    if (!order) return false;
+    try { trackOrder.save(page, order); }
+    catch { toast("无法保存歌曲顺序"); return false; }
+    rowSignature = ""; renderRows();
+    return true;
+  },
+});
 function pageOrder() {
+  return trackOrder.apply(page, defaultPageOrder(), tracks);
+}
+function defaultPageOrder() {
   const list = currentList();
   if (list) {
     const indices = new Map(tracks.map((t, i) => [t.url, i]));
@@ -354,7 +371,7 @@ function pageOrder() {
   return tracks.flatMap((t, i) => page !== "likes" || fav.has(t.url) ? [i] : []);
 }
 function playFromPage(i) {
-  if (page === "library") send("play " + i);
+  if (page === "library" && !trackOrder.has(page)) send("play " + i);
   else send("playset " + i + " " + pageOrder().join(" "));
 }
 function toggle() {
@@ -497,6 +514,7 @@ function renderRows() {
   const key = JSON.stringify([tracks, state.index, page, query, [...fav], batch]);
   if (key === rowSignature) return;
   rowSignature = key;
+  reorderHandles.reset();
   $("rows").replaceChildren();
   const visible = visibleOrder();
   if (batch) {
@@ -532,7 +550,7 @@ function renderRows() {
     info.append(n, sub);
     row.append(sleeve, info);
     $("rows").append(row);
-    if (batch) return;
+    if (batch) { reorderHandles.attach(row, t.url, title(t)); return; }
     const heart = btn(fav.has(t.url) ? "取消喜欢" : "喜欢", "heart", () =>
       like(t),
     );
