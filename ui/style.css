@@ -253,6 +253,9 @@ nav button.selected {
 /* iOS-inspired settings sheet: fixed chrome, inset groups, quiet scroll indicator. */
 #settings {
   width: min(620px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  /* Keep the outer sheet independent of each tab's intrinsic content size. */
+  height: min(522px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
   padding: 0;
   overflow: hidden;
@@ -263,7 +266,7 @@ nav button.selected {
   box-shadow: 0 28px 90px #24232d29, 0 2px 10px #24232d0a;
 }
 #settings::backdrop { background: #25263138; backdrop-filter: blur(10px); }
-.settingsFrame { display: flex; flex-direction: column; height: min(520px, calc(100dvh - 34px)); }
+.settingsFrame { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
 .settingsHeader { position: relative; flex: none; margin: 0; padding: 24px 24px 18px; }
 #settings .settingsHeader h2 { margin: 0; font-size: 27px; line-height: 1.25; font-weight: 700; letter-spacing: -.7px; }
 #settings .close { top: 24px; right: 24px; width: 28px; height: 28px; border-radius: 50%; color: #777982; background: #76768014; }
@@ -274,6 +277,7 @@ nav button.selected {
 .settingsTabs [aria-selected="true"] { color: #30313a; background: #ffffffed; box-shadow: 0 2px 6px #24232d12, 0 0 1px #24232d12; }
 .settingsBody {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   margin: 0 6px 12px 0;
   padding: 0 14px 12px 24px;

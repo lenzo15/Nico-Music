@@ -178,8 +178,26 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js("$('settingsTabAbout').focus()")
         key('Home', vk=36)
         assert js("$('settingsTabHotkeys').getAttribute('aria-selected')==='true' && document.activeElement===$('settingsTabHotkeys')")
-        for width, height in [(1180, 776), (610, 445)]:
+        geometry = """(() => { const r=$('settings').getBoundingClientRect(), body=$('settingsBody');
+          return [r.x,r.y,r.width,r.height,body.clientWidth,body.clientHeight,
+            document.querySelector('.settingsHeader').getBoundingClientRect().bottom,
+            document.querySelector('.settingsTabs').getBoundingClientRect().bottom]; })()"""
+        for width, height in [(1180, 776), (900, 650), (610, 445)]:
             cdp('Emulation.setDeviceMetricsOverride', {'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
+            js("$('settingsTabHotkeys').click()")
+            baseline = js(geometry)
+            assert baseline[2:4] == [min(620, width - 32), min(522, height - 32)], (width, height, baseline)
+            for tab in ('General', 'About', 'Hotkeys', 'About', 'General', 'Hotkeys'):
+                js(f"$('settingsTab{tab}').click()")
+                assert js(geometry) == baseline, (width, height, tab)
+            js("$('settingsTabAbout').click(); nativeMessage({updater:{phase:'downloading',received:512,total:1024}})")
+            assert js(geometry) == baseline
+            js("nativeMessage({updater:{phase:'downloaded',file:'C:/Downloads/'+'更新'.repeat(300)+'.zip'}})")
+            assert js(geometry) == baseline
+            assert js("$('settingsBody').scrollHeight>$('settingsBody').clientHeight && $('settings').scrollTop===0")
+            js("$('settingsTabGeneral').click()")
+            assert js(geometry) == baseline
+            js("$('settingsTabHotkeys').click()")
             assert js("""(() => { const d=$('settings'), b=d.getBoundingClientRect(), gear=$('settingsButton').getBoundingClientRect(), aside=document.querySelector('aside').getBoundingClientRect();
               $('record-prev').scrollIntoView({block:'center'}); const r=$('record-prev').getBoundingClientRect();
               return b.top>=0 && b.bottom<=innerHeight && d.scrollWidth<=d.clientWidth && r.top>=b.top && r.bottom<=b.bottom && gear.left>=aside.left && gear.right<=aside.right; })()"""), (width, height)
@@ -195,7 +213,8 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             output = Path(args.screenshot)
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(base64.b64decode(cdp('Page.captureScreenshot', {'format': 'png'})['data']))
-        print('OK: close discards drafts, nested About, general preferences, keyboard tabs, minimum-window geometry and inset iOS-style scrolling')
+        print('OK: close discards drafts, nested About, general preferences and keyboard tabs')
+        print('OK: fixed dialog/body/header geometry across all tabs and download states at 3 viewport sizes; inset scrolling only')
     finally:
         if ws:
             try:
