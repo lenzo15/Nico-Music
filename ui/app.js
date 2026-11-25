@@ -6,7 +6,7 @@ const paths = {
   library: '<path d="M4 4v16M9 4v16m4-15 4-1 4 15-4 1z"/>',
   heart:
     '<path d="M20.7 5.9c-2.5-2.7-6.5-1.7-8.7 1-2.3-2.7-6.2-3.7-8.7-1C-.3 10.1 4.2 15 12 20.5c7.8-5.5 12.3-10.4 8.7-14.6Z"/>',
-  tv: '<rect x="2.5" y="6.5" width="19" height="14" rx="4"/><path d="m8 2 3 4m5-4-3 4m-6 6v2m10-2v2"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
   external: '<path d="M7 17 18 6M7 6h11v11"/>',
   record:
     '<path d="M5 13a7 7 0 1 0 7-7" stroke-width="2.3"/><path d="M3.3 9A10 10 0 0 1 17 3.8"/><circle cx="12" cy="13" r="2.4"/>',
@@ -299,7 +299,7 @@ function renderSources(sources) {
     b.style.width = "100%";
     b.title = s.name;
     b.setAttribute("aria-label", s.name);
-    b.innerHTML = '<i>' + icon("tv") + '</i>';
+    b.innerHTML = '<i>' + icon("globe") + '</i>';
     b.append(document.createTextNode(s.name));
     const arrow = document.createElement("i");
     arrow.className = "trail";
@@ -311,7 +311,8 @@ function renderSources(sources) {
   $("sourcePanel").hidden = !$("sources").childElementCount;
 }
 function current() {
-  return tracks[state.index];
+  const track = tracks[state.index];
+  return track?.hidden ? undefined : track;
 }
 // The queue belongs to the player, not to the page being browsed.
 let drawnQueue, drawnTracks;
@@ -322,7 +323,7 @@ function renderQueue() {
     const rows = document.createDocumentFragment();
     for (const index of state.queue) {
       const track = tracks[index];
-      if (!track) continue;
+      if (!track || track.hidden) continue;
       const li = document.createElement("li"), b = document.createElement("button");
       b.type = "button";
       b.dataset.index = index;
@@ -359,8 +360,10 @@ const reorderHandles = createReorderHandles($("rows"), {
     return true;
   },
 });
+let hiddenTrackCount = 0;
+const librarySize = () => tracks.length - hiddenTrackCount;
 function pageOrder() {
-  return trackOrder.apply(page, defaultPageOrder(), tracks);
+  return trackOrder.apply(page, defaultPageOrder().filter(i => !tracks[i].hidden), tracks);
 }
 function defaultPageOrder() {
   const list = currentList();
@@ -665,7 +668,7 @@ function sync() {
   }
   if (!drag.has("volume")) range($("volume"), state.volume, 100);
   $("mute").innerHTML = icon(state.volume ? "volume" : "silent");
-  $("libCount").textContent = tracks.length;
+  $("libCount").textContent = librarySize();
   renderRows();
 }
 const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
@@ -693,6 +696,7 @@ bridge?.addEventListener("message", (e) => {
   if (msg.sources) renderSources(msg.sources);
   if (msg.tracks) {
     tracks = msg.tracks;
+    hiddenTrackCount = tracks.reduce((n, t) => n + (t.hidden ? 1 : 0), 0);
     const valid = new Set(tracks.map(t => t.url));
     try {
       lists?.prune(valid);

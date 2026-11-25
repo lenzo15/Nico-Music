@@ -158,6 +158,10 @@ const MusicSource *SourceRegistry::match(const std::string &url) const {
             }
     return best;
 }
+bool SourceRegistry::listed(const string &url) const {
+    // Keep local entries visible (including moved files); explicit media URLs need no provider.
+    return url.rfind("file:", 0) == 0 || !route(url).empty();
+}
 bool SourceRegistry::isCollection(const string &url) const {
     const auto *s = match(url);
     if (!s || s->collectionPaths.empty() || hostOf(url).empty()) return false;

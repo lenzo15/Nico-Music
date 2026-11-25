@@ -19,6 +19,8 @@ class SourceRegistry {
     const auto &all() const { return items; }
     const MusicSource *find(const std::string &id) const;
     const MusicSource *match(const std::string &url) const;
+    // Keep missing provider webpages in storage, but not in library views.
+    bool listed(const std::string &url) const;
     bool isCollection(const std::string &url) const;
     // Plugin target, unchanged direct media URL, or empty if unsupported.
     std::string route(const std::string &url) const;

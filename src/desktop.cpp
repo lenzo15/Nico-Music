@@ -342,6 +342,11 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             if (!first)
                 data += ',';
             first = false;
+            if (!station->providers().listed(t.url)) {
+                // URL keeps memberships and native indices intact; don't expose stale titles/covers.
+                data += "{\"hidden\":true,\"url\":" + quotedJson(t.url) + "}";
+                continue;
+            }
             const auto source = station->providers().match(t.url);
             data += "{\"source\":" + quotedJson(source ? source->name : "") + ",\"url\":" + quotedJson(t.url) + ",\"name\":" + quotedJson(t.name) +
                     ",\"thumbnail\":" + quotedJson(t.thumbnail.value_or("")) + "}";

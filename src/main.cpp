@@ -135,9 +135,12 @@ class Terminal : public Station {
         else if (urlOK(cmd) || !SourceRegistry::localFile(cmd).empty())
             importMusic(trim(input), true);
         else if (cmd == "list") {
-            cout << "我的歌单 · " << count() << " 首\n";
-            int current = active();
+            std::vector<int> visible;
             for (int i = 0; i < count(); ++i)
+                if (providers().listed(entries()[i].url)) visible.push_back(i);
+            cout << "我的歌单 · " << visible.size() << " 首\n";
+            int current = active();
+            for (int i : visible)
                 cout << (i == current ? " > " : "   ") << i + 1 << ". " << entries()[i].name << '\n';
         } else if (cmd == "play")
             play(number(arg, 1, count()) - 1);

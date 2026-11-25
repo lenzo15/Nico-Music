@@ -89,7 +89,10 @@ try {
     # Make the main executable available last, after its resources are in place.
     foreach ($rel in (@($files | Where-Object { $_ -ne 'NicoMusic.exe' }) + 'NicoMusic.exe')) {
         $src = [IO.Path]::Combine($stage,$rel); $dst = [IO.Path]::Combine($root,$rel); $old = [IO.Path]::Combine($backup,$rel)
-        Check-Links $dst; Ensure-Parent $dst
+        Check-Links $dst
+        # In-place updates refresh installed packages, never reinstall an absent optional plugin.
+        if ($rel -match '^plugins/([^/]+)/' -and ![IO.Directory]::Exists([IO.Path]::Combine($root,'plugins',$Matches[1]))) { continue }
+        Ensure-Parent $dst
         # Same-volume moves. Record each backup immediately, even if placing the new file fails.
         if ([IO.File]::Exists($dst)) {
             Ensure-Parent $old; [IO.File]::Move($dst,$old); $applied.Add($rel)

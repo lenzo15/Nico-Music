@@ -88,9 +88,11 @@ with tempfile.TemporaryDirectory() as tmp:
         # Keep the old library, remove the private runtime, and try both direct selection
         # and a new import. The existing metadata must not make it playable.
         server.played.clear()
-        output = subprocess.run([app / exe.name], env=env, input=f'sources\nplay 1\nadd {server.episode}\nquit\n', capture_output=True,
+        output = subprocess.run([app / exe.name], env=env, input=f'sources\nlist\nplay 1\nadd {server.episode}\nquit\n', capture_output=True,
                                 encoding='utf8', timeout=8, check=True).stdout
         assert '@webradio' not in output and '@bilibili' in output
+        assert '我的歌单 · 0 首' in output and '本地电台节目' not in output, output
+        assert server.episode in library.read_text(encoding='utf8')
         assert output.count('未安装支持此网页的来源插件') == 2 and not server.played.is_set(), output
         # A local-only source needs no home/hosts. Exercise the same metadata
         # and playback hooks with a percent-encoded URI, not just registration.
@@ -121,6 +123,19 @@ with tempfile.TemporaryDirectory() as tmp:
         rejected = subprocess.run([app / exe.name], env=env, input='add https://www.bilibili.com/video/BV1GJ411x7h7/\nquit\n',
                                   capture_output=True, encoding='utf8', timeout=8, check=True)
         assert '未安装支持此网页的来源插件' in rejected.stdout
+        # Simulate an upgrade profile: preserve a saved page (and its native index),
+        # but neither advertise the source nor list cached site metadata without the plugin.
+        with library.open('a', encoding='utf8') as f:
+            f.write('https://www.bilibili.com/video/BV1GJ411x7h7/\t旧站点曲目\t\n')
+        saved = library.read_bytes()
+        def listing():
+            return subprocess.run([app / exe.name], env=env, input='sources\nlist\nquit\n',
+                                  capture_output=True, encoding='utf8', timeout=8, check=True).stdout
+        output = listing()
+        assert '旧站点曲目' not in output and '@bilibili' not in output and 'feed' in output, output
+        shutil.copytree(exe.parent / 'plugins/bilibili', app / 'plugins/bilibili')
+        output = listing()
+        assert '旧站点曲目' in output and '@bilibili' in output and library.read_bytes() == saved, output
     finally:
         server.shutdown(); server.server_close()
 print('OK: web and local-file plugins, metadata, playback, persistence and uninstall')

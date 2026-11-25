@@ -80,8 +80,10 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
         if p.poll() is None: p.kill(); p.wait()
     print('OK: failed replacement rolls back previous files and restarts original executable')
     (root/'NicoMusicCLI.exe').rmdir()
-    result=launch(package()); assert result.returncode==0, result.stderr.decode('utf-8',errors='replace')
+    files['plugins/custom/updated.ini'] = b'new plugin file'
+    result=launch(package({'plugins/uninstalled/source.ini':b'optional'})); assert result.returncode==0, result.stderr.decode('utf-8',errors='replace')
     wait_for(lambda: clean() and (root/'relaunched').exists())
+    assert not (root/'plugins/uninstalled').exists()
     for name,data in files.items(): assert (root/name).read_bytes()==data
     for name in ('hotkeys.ini','library.tsv','plugins/custom/plugin.ini'): assert (root/name).read_text()=='original'
     print('OK: native handoff, in-place update, automatic restart, profile/plugin preservation and cleanup')
