@@ -60,7 +60,7 @@
       <main>
         <div class="topbar">
           <h1 id="heading">全部音乐</h1>
-          <button id="deleteList" class="icon" aria-label="删除歌单" hidden><i data-icon="trash"></i></button>
+          <button id="deleteList" class="icon" aria-label="删除歌单" aria-haspopup="dialog" aria-controls="deleteListDialog" hidden><i data-icon="trash"></i></button>
           <button id="topAdd" class="icon addLink" aria-label="添加链接">
             <i data-icon="plus"></i>
           </button>
@@ -196,6 +196,14 @@
           <button type="submit" class="subtle" value="close">关闭播放器</button>
         </div>
       </form>
+    </dialog>
+    <dialog id="deleteListDialog" role="alertdialog" aria-labelledby="deleteListTitle" aria-describedby="deleteListHint">
+      <h2 id="deleteListTitle">删除歌单？</h2>
+      <p id="deleteListHint"></p>
+      <div class="alertActions">
+        <button type="button" id="cancelDeleteList" autofocus>取消</button>
+        <button type="button" id="confirmDeleteList">删除</button>
+      </div>
     </dialog>
     <dialog id="listDialog" aria-labelledby="listTitle">
       <form id="listForm">

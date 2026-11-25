@@ -938,6 +938,15 @@ dialog input {
 }
 .rememberExit { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .rememberExit input { width: auto; margin: 0; padding: 0; accent-color: var(--red); }
+#deleteListDialog { width: min(320px, 90vw); padding: 0; text-align: center; background: var(--wash); }
+#deleteListTitle { margin: 22px 20px 6px; font-size: 18px; letter-spacing: -.02em; }
+#deleteListHint { margin: 0 20px 20px; line-height: 1.5; overflow-wrap: anywhere; }
+.alertActions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.alertActions button { min-height: 44px; font-size: 15px; }
+.alertActions button:hover { background: #76768012; }
+.alertActions button:focus-visible { outline-offset: -4px; border-radius: 8px; }
+#cancelDeleteList { font-weight: 600; }
+#confirmDeleteList { color: var(--red-dark); border-left: 1px solid var(--line); }
 #queueDialog { margin: auto 16px calc(var(--bar) + 8px) auto; width: min(380px, 90vw); padding: 18px 22px; }
 #queueDialog h2 { font-size: 20px; }
 #queueCount { font-size: 13px; color: #786f79; font-weight: 400; }

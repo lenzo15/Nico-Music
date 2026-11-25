@@ -123,11 +123,20 @@ $("listForm").onsubmit = e => {
     $("listDialog").close(); refreshListNav(); select(id);
   } catch (err) { $("listError").textContent = err.message || "创建失败"; }
 };
+const deleteListDialog = $("deleteListDialog");
+$("cancelDeleteList").onclick = () => deleteListDialog.close();
 $("deleteList").onclick = () => {
   const list = currentList();
-  if (!list || !confirm(`删除「${list.name}」？音乐仍保留在音乐库中。`)) return;
-  try { lists.remove(list.id); refreshListNav(); select("library"); }
-  catch { toast("无法删除歌单"); }
+  if (!list) return;
+  $("deleteListHint").textContent = `将删除「${list.name}」，其中的歌曲仍保留在音乐库中。`;
+  $("confirmDeleteList").onclick = () => {
+    deleteListDialog.close();
+    try {
+      lists.remove(list.id); refreshListNav(); select("library");
+      document.querySelector('nav [data-page="library"]').focus();
+    } catch { toast("无法删除歌单"); }
+  };
+  deleteListDialog.showModal();
 };
 function openAssign(urls, isBatch, caption) {
   if (!lists) return toast("歌单存储不可用");
