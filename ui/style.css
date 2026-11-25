@@ -825,6 +825,17 @@ dialog p {
 #projectLink { display: inline-flex; align-items: center; gap: 5px; color: var(--red); text-underline-offset: 3px; }
 #projectLink:hover { text-decoration: none; }
 #projectLink:focus-visible { outline: 3px solid #ed99a0; outline-offset: 3px; }
+.updatePanel { margin-bottom: 18px; padding-block: 14px; border-block: 1px solid var(--line); }
+.updatePanel p { margin: 6px 0 10px; }
+#updateStatus { overflow-wrap: anywhere; }
+.updateActions { display: flex; flex-wrap: wrap; gap: 8px; }
+#downloadProgress { margin: 10px 0; }
+#updateProgress { width: 100%; height: 8px; accent-color: var(--red); }
+#downloadBytes { display: block; color: var(--muted); font-variant-numeric: tabular-nums; }
+dialog .autoUpdate { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.autoUpdate input { width: auto; margin: 0; accent-color: var(--red); }
+#info { position: relative; }
+#info[data-update="true"]::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
 dialog label {
   display: block;
   font-size: 12px;

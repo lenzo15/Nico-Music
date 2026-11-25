@@ -1,12 +1,14 @@
 #include "station.hpp"
 #include <ole2.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <wrl.h>
 #include <WebView2.h>
 #include <windowsx.h>
 #include "audio_meter.hpp"
 #include "focus_presets.hpp"
 #include "startup_splash.hpp"
+#include "updater.hpp"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -16,6 +18,9 @@ HWND window{};
 ComPtr<ICoreWebView2Controller> controller;
 ComPtr<ICoreWebView2> view;
 std::unique_ptr<Station> station;
+std::unique_ptr<Updater> updater;
+std::optional<UpdateDownload> pendingDownload;
+constexpr UINT chooseUpdateFile = WM_APP + 3;
 StartupSplash splash;
 bool ready = false;
 bool nativeDragRegion = false;
@@ -192,6 +197,50 @@ string quotedJson(const string &s) {
     }
     return out + '"';
 }
+void publishUpdates(bool force = false) {
+    if (!view || !ready || !updater) return;
+    const auto state = updater->status(force);
+    if (!state) return;
+    const auto json = "{\"updater\":{\"phase\":" + quotedJson(state->phase) +
+        ",\"body\":" + quotedJson(state->body) + ",\"error\":" + quotedJson(state->error) +
+        ",\"httpStatus\":" + std::to_string(state->httpStatus) +
+        ",\"received\":" + std::to_string(state->received) + ",\"total\":" + std::to_string(state->total) +
+        ",\"file\":" + quotedJson(state->file.u8string()) + "}}";
+    view->PostWebMessageAsJson(wide(json).c_str());
+}
+void updatePromptResult(const string& phase, const string& error = {}) {
+    if (!view || !ready) return;
+    const auto json = "{\"updater\":{\"phase\":" + quotedJson(phase) + ",\"error\":" + quotedJson(error) + "}}";
+    view->PostWebMessageAsJson(wide(json).c_str());
+}
+void chooseDownload() {
+    if (!pendingDownload || !updater || updater->busy()) return;
+    const auto asset = std::move(*pendingDownload);
+    pendingDownload.reset();
+    ComPtr<IFileSaveDialog> dialog;
+    ComPtr<IShellItem> item;
+    LPWSTR rawPath = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    if (SUCCEEDED(hr)) {
+        COMDLG_FILTERSPEC filter{L"ZIP 压缩包", L"*.zip"};
+        hr = dialog->SetFileTypes(1, &filter);
+        if (SUCCEEDED(hr)) hr = dialog->SetDefaultExtension(L"zip");
+        if (SUCCEEDED(hr)) hr = dialog->SetFileName(wide(asset.name).c_str());
+        if (SUCCEEDED(hr)) hr = dialog->SetTitle(L"下载 NicoMusic 更新");
+        if (SUCCEEDED(hr)) hr = dialog->SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT | FOS_NOCHANGEDIR);
+        if (SUCCEEDED(hr)) hr = dialog->Show(window);
+        if (SUCCEEDED(hr)) hr = dialog->GetResult(&item);
+        if (SUCCEEDED(hr)) hr = item->GetDisplayName(SIGDN_FILESYSPATH, &rawPath);
+    }
+    const fs::path path = rawPath ? rawPath : L"";
+    CoTaskMemFree(rawPath);
+    if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED)) { updatePromptResult("save-cancelled"); return; }
+    if (FAILED(hr) || path.empty()) { updatePromptResult("download-error", "无法选择保存位置"); return; }
+    try {
+        if (!updater->download(asset, path)) updatePromptResult("download-error", "已有更新任务正在运行");
+        publishUpdates();
+    } catch (const std::exception& e) { updatePromptResult("download-error", e.what()); }
+}
 void publish(bool library, string err = {}, const string &imported = {}, bool queueChanged = false) {
     if (!view || !ready)
         return;
@@ -289,6 +338,41 @@ void handle(const string &message) {
     bool changed = false;
     try {
         if (cmd == "window") { windowAction(arg); return; }
+        if (cmd == "check-update") {
+            if (!pendingDownload) updater->check();
+            publishUpdates();
+            return;
+        }
+        if (cmd == "cancel-update") { updater->cancel(); return; }
+        if (cmd == "download-update") {
+            if (updater->busy() || pendingDownload) { publishUpdates(true); return; }
+            auto [url, rest] = split(arg);
+            auto [size, details] = split(rest);
+            auto [hash, name] = split(details);
+            UpdateDownload asset;
+            asset.url = url; asset.name = name; asset.sha256 = hash == "-" ? "" : hash;
+            const auto parsed = std::from_chars(size.data(), size.data() + size.size(), asset.size);
+            if (parsed.ec != std::errc{} || parsed.ptr != size.data() + size.size() || !Updater::validAsset(asset)) {
+                updatePromptResult("download-error", "无效的更新安装包");
+                return;
+            }
+            pendingDownload = std::move(asset);
+            if (!PostMessageW(window, chooseUpdateFile, 0, 0)) {
+                pendingDownload.reset();
+                updatePromptResult("download-error", "无法打开保存对话框");
+            }
+            return;
+        }
+        if (cmd == "show-update") {
+            const auto state = updater->status(true);
+            if (!state || state->file.empty() || !fs::is_regular_file(state->file))
+                throw std::runtime_error("下载文件不存在，可能已移动或删除");
+            auto item = ILCreateFromPathW(state->file.c_str());
+            const HRESULT hr = item ? SHOpenFolderAndSelectItems(item, 0, nullptr, 0) : E_FAIL;
+            ILFree(item);
+            if (FAILED(hr)) throw std::runtime_error("无法打开下载位置");
+            return;
+        }
         if (cmd == "levels") {
             stopMeter();
             const auto [action, id] = split(arg);
@@ -305,6 +389,8 @@ void handle(const string &message) {
             ready = true;
             if (!arg.empty()) station->setRepeat(arg);
             publishHotkeys();
+            view->PostWebMessageAsJson(wide("{\"appVersion\":" + quotedJson(NICOMUSIC_VERSION) + "}").c_str());
+            publishUpdates(true);
             publishWindowState();
             changed = true;
         } else if (cmd == "start" || cmd == "add") {
@@ -471,6 +557,9 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     switch (m) {
+    case chooseUpdateFile:
+        chooseDownload();
+        return 0;
     case WM_HOTKEY:
         if (ready && view) {
             for (const auto& key : playbackHotkeys) {
@@ -518,7 +607,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (controller) controller->NotifyParentWindowPositionChanged();
         break;
     case WM_TIMER:
-        if (w == 1) publish(false);
+        if (w == 1) { publish(false); publishUpdates(); }
         else if (w == 2) meterTick();
         else if (w == StartupSplash::timer) splash.tick(h);
         return 0;
@@ -570,6 +659,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_DESTROY:
+        if (updater) updater->cancel();
+        pendingDownload.reset();
         unregisterPlaybackHotkeys(h);
         splash.finish(h);
         RemovePropW(h, primaryMarker);
@@ -635,6 +726,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         splash.start(window);
         ShowWindow(window, show);
         UpdateWindow(window); // first frame, before library/plugin discovery or WebView2 initialization
+        updater = std::make_unique<Updater>();
         station = std::make_unique<Station>();
         registerPlaybackHotkeys(window);
         HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
@@ -668,6 +760,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         code = 1;
     }
     unregisterPlaybackHotkeys(window);
+    updater.reset();
     station.reset();
     CoUninitialize();
     return code;

@@ -22,9 +22,16 @@ NicoMusic 仅用于学习、研究和个人使用。项目与 BiliBili 及相关
 - **播放队列**：查看当前队列并点播其中的歌曲；从收藏或自建歌单播放时按对应列表建立队列，切换页面不影响当前队列。
 - **专注模式**：点击当前歌曲封面进入专注页，内置简洁视图。
 - **托盘与快捷操作**：最小化到系统托盘后继续播放，点击托盘图标恢复窗口；关闭窗口时可选择收起或退出并记住选择；全局快捷键 `Ctrl + Alt + ←` 上一首、`Ctrl + Alt + →` 下一首、`Ctrl + Alt + 空格` 播放 / 暂停，后台及托盘中也可使用。窗口内还支持空格播放 / 暂停（输入或弹窗时不触发）、Esc 返回列表。若组合键被其他程序占用，会提示并降级为仅窗口内可用；可在播放按钮提示及「关于」中查看。
+- **版本更新**：启动后在后台检查 GitHub 最新正式版（成功结果缓存 6 小时），发现新版本时提示并标记「关于」入口。可在「关于」手动检查、关闭自动检查，并直接在软件内下载 Windows x64 ZIP 安装包，查看进度、取消下载或打开保存位置，无需打开网页；校验大小及 GitHub 提供的 SHA-256 后才保存成最终文件。下载不会自动执行或覆盖正在运行的程序，请退出播放器后解压更新。
 - **本地保存**：保留音乐库、自建歌单、收藏及播放模式、专注预设等偏好，重启后仍可使用。
 - **插件扩展**：音源与专注预设独立安装、卸载，无需重新编译；不安装插件也可播放本地音频和受支持的音频直链。
 - **命令行模式**：提供独立 CLI，支持添加音乐、查看列表、播放控制及循环模式，无需 WebView2。
+
+## 发布更新
+
+更新来源固定为 [NicoMusic Releases](https://github.com/lenzo15/Nico-Music/releases)，只检查已发布的正式版，不使用草稿或预发布版。检查和下载在后台进行，网络失败不影响播放；不支持断点续传，取消或校验失败会删除临时文件。手动检查每分钟最多一次。
+
+发布新版本时，请同时更新 `CMakeLists.txt` 中 `project(NicoMusic VERSION X.Y.Z ...)` 的版本号，并使用对应的 `vX.Y.Z` Release 标签；附加以 `windows-x64.zip` 或 `win-x64.zip` 结尾的安装包（例如 `NicoMusic-v1.1.0-windows-x64.zip`），播放器会自动选择该包，而不是源码或 ARM64 包。下载后的程序版本取自构建时的版本号，不会把 GitHub 上的版本号当成当前版本。
 
 ## 基础插件
 
@@ -61,6 +68,8 @@ cmake --build build --config Release
 列表滚动布局回归：`python tests/collection_scroll.py`（需安装 Edge 或 Chrome 及 `websocket-client`，无头运行，不影响已打开的播放器）。
 
 快捷键回归：`node --test tests/shortcuts.js`；Windows 桌面集成：`python tests/desktop_shortcuts.py build/Release/NicoMusic.exe`，加 `--conflict` 验证全局组合键被占用时的提示与窗口内降级（需先退出桌面播放器，且组合键未被其他程序占用）。
+
+更新检查及下载逻辑回归：`node --test tests/updates.js`；「关于」页及下载状态无头回归：`python tests/updates_ui.py`（模拟原生消息，不实际下载）。原生联网测试：配置时加 `-DNICOMUSIC_UPDATE_TESTS=ON`，构建后运行 `python tests/updater_network.py build/Release/NicoMusicUpdateTest.exe`，验证真实 GitHub 检查、下载、校验失败保护及取消清理（临时目录，不影响已安装播放器）。
 
 [mpv 客户端头文件](third_party/mpv/client.h) 保留原 ISC 声明；libmpv 二进制、WebView2 和插件使用的第三方工具各自遵循上游许可。
 

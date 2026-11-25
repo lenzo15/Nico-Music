@@ -622,8 +622,11 @@ function sync() {
   renderRows();
 }
 const playbackShortcuts = createPlaybackShortcuts(toast);
+const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridge,
+  storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
+  if (updateChecker.message(msg)) return;
   if (playbackShortcuts.message(msg)) return;
   if ("localPath" in msg) {
     if ($("addDialog").open) {
