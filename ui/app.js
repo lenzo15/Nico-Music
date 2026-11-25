@@ -14,6 +14,7 @@ const paths = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
   settings: '<circle cx="12" cy="12.5" r="3"/><path d="m10 3-.5 2.5-2.2 1.3-2.4-.8-2 3.5 1.9 1.7v2.6l-1.9 1.7 2 3.5 2.4-.8 2.2 1.3L10 22h4l.5-2.5 2.2-1.3 2.4.8 2-3.5-1.9-1.7v-2.6l1.9-1.7-2-3.5-2.4.8-2.2-1.3L14 3Z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  checklist: '<path d="m3 7 2 2 4-5m3 3h9M3 16l2 2 4-5m3 3h9"/>',
   play: '<path d="m7 4 13 8-13 8z" fill="currentColor"/>',
   pause: '<path d="M8 5v14m8-14v14" stroke-width="4"/>',
   order: '<path d="M4 6h11M4 12h11M4 18h16m-4-4 4 4-4 4"/>',
@@ -370,7 +371,6 @@ function visibleOrder() {
   return pageOrder().filter(i => !query || (title(tracks[i]) + " " + tracks[i].url).toLowerCase().includes(query));
 }
 function refreshBatch(visible) {
-  $("batchToggle").textContent = batch ? "完成" : "批量操作";
   $("batchToggle").setAttribute("aria-pressed", String(batch));
   $("batchBar").hidden = !batch;
   if (!batch) return;

@@ -62,8 +62,8 @@
         <div class="topbar">
           <h1 id="heading">全部音乐</h1>
           <button id="deleteList" class="subtle" hidden><i data-icon="trash"></i>删除歌单</button>
-          <button id="topAdd" class="subtle addLink">
-            <i data-icon="plus"></i>添加链接
+          <button id="topAdd" class="icon addLink" aria-label="添加链接">
+            <i data-icon="plus"></i>
           </button>
         </div>
         <div class="content">
@@ -75,7 +75,7 @@
                 placeholder="搜索曲名或来源"
                 aria-label="搜索曲名或来源"
             /></label>
-            <button id="batchToggle" class="subtle" aria-pressed="false" aria-controls="batchBar">批量操作</button></div>
+            <button id="batchToggle" class="icon" aria-label="批量操作" aria-pressed="false" aria-controls="batchBar"><i data-icon="checklist"></i></button></div>
             <div id="batchBar" role="group" aria-label="歌曲批量操作" hidden>
               <label><input id="batchAll" type="checkbox">全选</label>
               <small id="batchCount" aria-live="polite">已选 0 首</small>
