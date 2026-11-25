@@ -243,27 +243,29 @@
       </form>
     </dialog>
     <dialog id="settings" aria-labelledby="settingsTitle">
-      <button class="close icon" aria-label="关闭设置"><i data-icon="close"></i></button>
-      <h2 id="settingsTitle">设置</h2>
+      <div class="settingsFrame">
+      <header class="settingsHeader">
+        <h2 id="settingsTitle">设置</h2>
+        <button class="close icon" aria-label="关闭设置"><i data-icon="close"></i></button>
+      </header>
       <div class="settingsTabs" role="tablist" aria-label="设置分类">
         <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="true" aria-controls="settingsHotkeys">热键</button>
         <button type="button" id="settingsTabGeneral" data-settings-tab="general" role="tab" aria-selected="false" aria-controls="settingsGeneral" tabindex="-1">常规</button>
         <button type="button" id="settingsTabAbout" data-settings-tab="about" role="tab" aria-selected="false" aria-controls="about" tabindex="-1">关于</button>
       </div>
+      <div id="settingsBody" class="settingsBody">
       <section id="settingsHotkeys" role="tabpanel" aria-labelledby="settingsTabHotkeys">
-        <h3>全局组合热键</h3>
-        <p>点击录制，再按 Ctrl 或 Alt 加其他按键（可加 Shift）。保存后生效，关闭设置会放弃未保存的修改。</p>
+        <h3 class="settingsSectionTitle">播放控制</h3>
         <form id="hotkeyForm">
+          <div class="hotkeyGroup">
           <div class="hotkeyRow"><label for="hotkey-prev">上一首</label><input id="hotkey-prev" readonly aria-label="上一首组合热键" /><button type="button" id="record-prev" class="subtle">录制</button><button type="button" id="clear-prev" class="subtle">清除</button></div>
           <div class="hotkeyRow"><label for="hotkey-next">下一首</label><input id="hotkey-next" readonly aria-label="下一首组合热键" /><button type="button" id="record-next" class="subtle">录制</button><button type="button" id="clear-next" class="subtle">清除</button></div>
           <div class="hotkeyRow"><label for="hotkey-toggle">播放 / 暂停</label><input id="hotkey-toggle" readonly aria-label="播放暂停组合热键" /><button type="button" id="record-toggle" class="subtle">录制</button><button type="button" id="clear-toggle" class="subtle">清除</button></div>
+          </div>
           <p id="hotkeyEditStatus" role="status" aria-live="polite">正在读取当前热键…</p>
-          <div class="settingsActions"><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button></div>
+          <p id="hotkeyAvailability" class="settingsNotice" role="status" aria-live="polite" hidden></p>
+          <div class="settingsActions"><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button></div>
         </form>
-        <p id="shortcutHint">组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。</p>
-        <h3>默认媒体键（固定）</h3>
-        <p>MediaPlayPause：播放 / 暂停<br />MediaPrevious：上一首<br />MediaNext：下一首<br />VolumeUp / VolumeDown：播放器音量 ±5%</p>
-        <p id="mediaKeyHint">这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键支持长按连续调节。</p>
       </section>
       <section id="settingsGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral" hidden>
         <h3>关闭窗口</h3>
@@ -295,6 +297,8 @@
         <label class="autoUpdate"><input type="checkbox" id="autoUpdate" checked />启动时自动检查更新</label>
       </section>
       </section>
+      </div>
+      </div>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>

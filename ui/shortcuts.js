@@ -34,16 +34,12 @@ function createPlaybackShortcuts(notify, adjustVolume) {
       if (!registered[key]) unavailableMedia.push(key === "volumeUp" ? "VolumeUp" : "VolumeDown");
     }
     control("volume").title = `播放器音量（VolumeUp：${registered.volumeUp ? "全局" : "仅窗口内"}；VolumeDown：${registered.volumeDown ? "全局" : "仅窗口内"}，每次 5%，支持长按）`;
-    const hint = control("shortcutHint"), mediaHint = control("mediaKeyHint");
-    hint.textContent = unavailable.length
-      ? `全局快捷键注册失败：${unavailable.join("、")}，可能已被其他程序占用；播放器收到这些按键时仍可在窗口内使用。`
-      : "组合键在后台或收起到托盘时也可用；窗口内还可用空格播放 / 暂停（输入时除外）。";
-    mediaHint.textContent = unavailableMedia.length
-      ? `默认媒体键注册失败：${unavailableMedia.join("、")}，可能已被其他程序占用；窗口收到按键时仍可使用。`
-      : "这些是固定的内置媒体键，后台及托盘中也可用，不参与组合热键编辑。音量键每次调节播放器音量 5%，支持长按。";
-    const signature = [...unavailable, ...unavailableMedia].join("|");
-    if (signature && signature !== lastUnavailable)
-      notify([unavailable.length ? hint.textContent : "", unavailableMedia.length ? mediaHint.textContent : ""].filter(Boolean).join(" "));
+    const unavailableKeys = [...unavailable, ...unavailableMedia];
+    const notice = control("hotkeyAvailability");
+    notice.hidden = !unavailableKeys.length;
+    notice.textContent = unavailableKeys.length ? `快捷键注册失败：${unavailableKeys.join("、")}。可能被其他程序占用。` : "";
+    const signature = unavailableKeys.join("|");
+    if (signature && signature !== lastUnavailable) notify(notice.textContent);
     lastUnavailable = signature;
   }
   document.addEventListener("keydown", e => {

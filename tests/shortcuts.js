@@ -24,7 +24,7 @@ function setup() {
     querySelector() { return this.modal ? {} : null; },
     addEventListener(type, listener) { assert.equal(type, "keydown"); keydown = listener; },
   };
-  for (const id of ["prev", "next", "toggle", "volume", "shortcutHint", "mediaKeyHint"]) {
+  for (const id of ["prev", "next", "toggle", "volume", "hotkeyAvailability"]) {
     controls[id] = {disabled: false, setAttribute(name, value) { this[name] = value; },
       click() { if (!this.disabled) actions.push(id); }};
   }
@@ -108,12 +108,14 @@ test("registration failure is visible and leaves local fallback usable", () => {
   const registered = {prev: true, next: true, toggle: true, mediaPrev: true, mediaNext: true, mediaToggle: true,
     volumeUp: true, volumeDown: true};
   h.shortcuts.message({hotkeys: registered});
+  assert.equal(h.controls.hotkeyAvailability.hidden, true);
+  assert.equal(h.controls.hotkeyAvailability.textContent, "");
   assert.equal(h.notices.length, 0);
   assert.match(h.controls.prev.title, /全局/);
   h.shortcuts.message({hotkeys: {...registered, next: false}});
   assert.match(h.controls.next.title, /仅窗口内/);
   assert.match(h.notices[0], /Ctrl \+ Alt \+ →/);
-  assert.match(h.controls.shortcutHint.textContent, /注册失败/);
+  assert.match(h.controls.hotkeyAvailability.textContent, /注册失败/);
   h.key({code: "ArrowRight", ctrlKey: true, altKey: true});
   assert.deepEqual(h.actions, ["next"]);
 });
@@ -158,8 +160,8 @@ test("media key registration conflicts are reported independently of existing ch
   assert.equal(h.notices.length, 1);
   assert.match(h.notices[0], /MediaNext/);
   assert.doesNotMatch(h.notices[0], /Ctrl \+ Alt/);
-  assert.doesNotMatch(h.controls.shortcutHint.textContent, /失败/);
-  assert.match(h.controls.mediaKeyHint.textContent, /MediaNext/);
+  assert.match(h.controls.hotkeyAvailability.textContent, /MediaNext/);
+  assert.doesNotMatch(h.controls.hotkeyAvailability.textContent, /Ctrl \+ Alt/);
   h.key({code: "MediaNext"});
   assert.deepEqual(h.actions, ["next"]);
 });
@@ -190,8 +192,8 @@ test("native volume messages and independent volume conflicts keep built-ins out
   h.shortcuts.message({hotkeys: {prev: true, next: true, toggle: true,
     mediaPrev: true, mediaNext: true, mediaToggle: true, volumeUp: false, volumeDown: true}});
   assert.match(h.controls.volume.title, /VolumeUp：仅窗口内；VolumeDown：全局/);
-  assert.match(h.controls.mediaKeyHint.textContent, /VolumeUp/);
-  assert.doesNotMatch(h.controls.shortcutHint.textContent, /失败/);
+  assert.match(h.controls.hotkeyAvailability.textContent, /VolumeUp/);
+  assert.doesNotMatch(h.controls.hotkeyAvailability.textContent, /Ctrl \+ Alt/);
   assert.equal(h.notices.length, 1);
   assert.doesNotMatch(h.notices[0], /Ctrl \+ Alt/);
 });

@@ -11,6 +11,7 @@ function createSettings({shortcuts, send, notify, desktop}) {
   function render() {
     for (const [index, action] of actions.entries()) {
       el("hotkey-" + action).value = target === index ? recording ? "请按组合键…" : "正在准备录制…" : hotkeyText(draft[index]);
+      el("hotkey-" + action).classList.toggle("isRecording", target === index);
       el("record-" + action).disabled = !ready || !desktop || saving;
       el("record-" + action).textContent = target === index ? "取消录制" : "录制";
       el("clear-" + action).disabled = !ready || !desktop || saving || !draft[index].key;
@@ -33,6 +34,7 @@ function createSettings({shortcuts, send, notify, desktop}) {
       el(tab.getAttribute("aria-controls")).hidden = !selected;
       if (selected && focus) tab.focus();
     }
+    el("settingsBody").scrollTop = 0;
   }
   for (const tab of dialog.querySelectorAll("[data-settings-tab]")) {
     tab.onclick = () => showTab(tab.dataset.settingsTab);
@@ -65,7 +67,7 @@ function createSettings({shortcuts, send, notify, desktop}) {
     el("clear-" + action).onclick = () => {
       if (!ready || saving || !desktop) return;
       stopCapture(); draft[index] = {modifiers: 0, key: 0}; render();
-      status("组合键已清除，保存后生效；内置媒体键不会改变");
+      status("组合键已清除，保存后生效");
     };
   }
   document.addEventListener("keydown", event => {

@@ -118,7 +118,7 @@ try:
             until(lambda: js('document.querySelectorAll(".row").length===3'))
             until(lambda: js('$("toggle").title.includes("全局")'))
             if conflict:
-                assert js('$("next").title.includes("仅窗口内") && $("shortcutHint").textContent.includes("注册失败")')
+                assert js('$("next").title.includes("仅窗口内") && $("hotkeyAvailability").textContent.includes("注册失败")')
             for identifier, key in ALL_KEYS.items():
                 if conflict and identifier == 2:
                     continue

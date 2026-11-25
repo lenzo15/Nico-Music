@@ -104,15 +104,18 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js("$('settingsButton').click()")
         assert js("$('settings').open && !$('settingsHotkeys').hidden && $('about').hidden && $('hotkey-prev').value==='Ctrl + Alt + ←'")
         assert js("$('hotkeyForm').querySelectorAll('input').length===3 && [...$('hotkeyForm').querySelectorAll('input')].every(i=>i.readOnly)")
+        assert js("!$('shortcutHint') && !$('mediaKeyHint') && !/默认媒体键|MediaPlayPause|MediaPrevious|MediaNext|VolumeUp|VolumeDown|组合键在后台/.test($('settings').textContent)")
+        assert js("$('hotkeyAvailability').hidden && !$('hotkeyAvailability').textContent")
 
         def record(action):
             js(f"$('record-{action}').click()")
             until(lambda: js(f"$('hotkey-{action}').value==='请按组合键…'"))
+            assert js(f"$('hotkey-{action}').classList.contains('isRecording')")
 
         record('prev')
         key('KeyK', 'k', 3, 75)
         until(lambda: js("$('hotkey-prev').value==='Ctrl + Alt + K' && !hostCapture"))
-        assert js("playbackShortcuts.bindings()[0].key===37 && hostBindings[0].key===37")
+        assert js("playbackShortcuts.bindings()[0].key===37 && hostBindings[0].key===37 && !$('hotkey-prev').classList.contains('isRecording')")
         js("$('saveHotkeys').click()")
         until(lambda: js("$('hotkeyEditStatus').textContent.includes('已保存') && playbackShortcuts.bindings()[0].key===75"))
         assert js("$('prev').title.includes('Ctrl + Alt + K')")
@@ -180,13 +183,19 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             assert js("""(() => { const d=$('settings'), b=d.getBoundingClientRect(), gear=$('settingsButton').getBoundingClientRect(), aside=document.querySelector('aside').getBoundingClientRect();
               $('record-prev').scrollIntoView({block:'center'}); const r=$('record-prev').getBoundingClientRect();
               return b.top>=0 && b.bottom<=innerHeight && d.scrollWidth<=d.clientWidth && r.top>=b.top && r.bottom<=b.bottom && gear.left>=aside.left && gear.right<=aside.right; })()"""), (width, height)
+        js("$('settingsBody').scrollTop=0")
+        chrome = js("['.settingsHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})")
+        js("$('settingsBody').scrollTop=$('settingsBody').scrollHeight")
+        assert js("$('settingsBody').scrollTop>0 && $('settings').scrollTop===0")
+        assert js("['.settingsHeader','.settingsTabs','#settings .close'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.top,r.bottom]})") == chrome
+        assert js("getComputedStyle($('settings')).overflowY==='hidden' && getComputedStyle($('settingsBody'),'::-webkit-scrollbar').width==='4px' && getComputedStyle($('settingsBody'),'::-webkit-scrollbar-button').display==='none'")
         if args.screenshot:
             cdp('Emulation.setDeviceMetricsOverride', {'width': 1180, 'height': 776, 'deviceScaleFactor': 1, 'mobile': False})
-            js("$('settings').scrollTop=0")
+            js("$('settingsBody').scrollTop=0")
             output = Path(args.screenshot)
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(base64.b64decode(cdp('Page.captureScreenshot', {'format': 'png'})['data']))
-        print('OK: close discards drafts, nested About, general preferences, keyboard tabs and minimum-window geometry')
+        print('OK: close discards drafts, nested About, general preferences, keyboard tabs, minimum-window geometry and inset iOS-style scrolling')
     finally:
         if ws:
             try:
