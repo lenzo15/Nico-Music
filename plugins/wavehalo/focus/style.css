@@ -13,9 +13,9 @@ body[data-focus-preset="wavehalo"] #focusBackground::after {
   background: radial-gradient(ellipse at center, transparent 25%, #11192966 90%), linear-gradient(0deg, #10162788, transparent 45%);
 }
 .halo-stage { position: relative; flex: none; width: min(96cqw, 98cqh, 820px); aspect-ratio: 1; pointer-events: none; }
-.halo-rim { position: absolute; inset: 11.9%; border-radius: 50%; background: #161a25e6;
+.halo-rim { position: absolute; inset: 17.8%; border-radius: 50%; background: #161a25e6;
   box-shadow: 0 0 3px 2px #fff5, 0 12px 44px #080b1570; }
-.halo-art { position: absolute; inset: 13.9%; display: grid; place-items: center; overflow: hidden; border-radius: 50%;
+.halo-art { position: absolute; inset: 19.8%; display: grid; place-items: center; overflow: hidden; border-radius: 50%;
   background: radial-gradient(ellipse at 30% 20%, #d8d5f1, transparent 55%),
     radial-gradient(ellipse at 76% 80%, #ae9aba, transparent 55%), linear-gradient(150deg, #7e99b0, #434a69);
   animation: halo-turn 52s linear infinite;

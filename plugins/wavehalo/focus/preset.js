@@ -10,14 +10,14 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     <svg class="halo-ring" viewBox="-256 -256 512 512"><path/></svg>
   </div>`;
   const stage = root.firstElementChild, art = stage.querySelector(".halo-art");
-  const path = stage.querySelector("path"), count = 128, radius = 190;
+  const path = stage.querySelector("path"), count = 128, radius = 160;
   const bins = Array.from({length: count}, (_, i) => {
     const angle = i * 2 * Math.PI / count;
     const x = Math.cos(angle), y = Math.sin(angle);
     // Paired lobes keep the ring balanced. Sharper treble accents form a few long needles.
     const lobe = (center, width) => Math.exp(-(Math.sin(angle - center) ** 2) / width);
     return {x, y, base: 6 + 1.5 * Math.cos(4 * angle),
-      bass: 22 * lobe(1.32, .075), mid: 27 * lobe(.28, .036),
+      bass: 34 * lobe(1.32, .075), mid: 27 * lobe(.28, .036),
       air: 46 * lobe(-.58, .009), ripple: .55 + .45 * Math.cos(7 * angle) ** 2};
   });
   const energy = [0, 0, 0], target = [0, 0, 0];
