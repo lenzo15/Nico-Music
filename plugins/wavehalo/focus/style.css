@@ -1,0 +1,44 @@
+/* The scene is album art, not a bundled still; gradients also form the no-cover artwork. */
+body[data-focus-preset="wavehalo"] { isolation: isolate; background: #172337; }
+body[data-focus-preset="wavehalo"] #focusBackground {
+  position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  background: radial-gradient(ellipse at 75% 20%, #b9b8da, transparent 58%),
+    linear-gradient(120deg, #192d40 8%, #697c9b 55%, #857998);
+}
+.halo-wash { position: absolute; inset: -3%; filter: blur(5px) saturate(.85); opacity: .78; }
+.halo-wash > svg { display: none; }
+.halo-wash img, .halo-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+body[data-focus-preset="wavehalo"] #focusBackground::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 25%, #11192966 90%), linear-gradient(0deg, #10162788, transparent 45%);
+}
+.halo-stage { position: relative; flex: none; width: min(96cqw, 98cqh, 820px); aspect-ratio: 1; pointer-events: none; }
+.halo-rim { position: absolute; inset: 11.9%; border-radius: 50%; background: #161a25e6;
+  box-shadow: 0 0 3px 2px #fff5, 0 12px 44px #080b1570; }
+.halo-art { position: absolute; inset: 13.9%; display: grid; place-items: center; overflow: hidden; border-radius: 50%;
+  background: radial-gradient(ellipse at 30% 20%, #d8d5f1, transparent 55%),
+    radial-gradient(ellipse at 76% 80%, #ae9aba, transparent 55%), linear-gradient(150deg, #7e99b0, #434a69);
+  animation: halo-turn 52s linear infinite;
+}
+.halo-art > svg { width: 28%; height: 28%; color: #fff8; }
+@keyframes halo-turn { to { transform: rotate(1turn); } }
+.halo-ring { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #fffdf9;
+  stroke-width: 3.7; stroke-linecap: round; filter: drop-shadow(0 0 3px #fffc);
+  animation: halo-breathe 4.8s ease-in-out infinite alternate; }
+@keyframes halo-breathe { from { opacity: .82; transform: scale(.997); } to { opacity: 1; transform: scale(1.008); } }
+
+/* Keep the host's transport and preset picker usable against both pale and dark covers. */
+body[data-focus-preset="wavehalo"] #focusView { color: white; --line: #ffffff40;
+  --focus-tool-bg: #1d2638bb; --focus-tool-hover: #283449; --menu-glass: #202b3bed;
+  --menu-edge: #ffffff30; --menu-ink: #f7f8ff; --menu-accent: #c9dcff; --menu-hover: #ffffff18; }
+body[data-focus-preset="wavehalo"] :is(.windowBar, footer) {
+  --muted: #d4d9e5; --red: #c8daff; --line: #ffffff35; color: #f7f8ff;
+  background: #161d2fbf; border-color: var(--line); box-shadow: none;
+}
+body[data-focus-preset="wavehalo"] .windowControls { background: #151e305c; border-color: #ffffff38; box-shadow: none; }
+body[data-focus-preset="wavehalo"] :is(.windowControls button, footer .icon) { color: #edf0fa; }
+body[data-focus-preset="wavehalo"] :is(.windowControls button, footer .icon):hover { background: #ffffff24; }
+body[data-focus-preset="wavehalo"] .windowControls [data-window="close"]:hover { background: #994553; }
+body[data-focus-preset="wavehalo"] .toggle { background: #edf2ff; color: #243047; }
+body[data-focus-preset="wavehalo"] .timeline time { color: var(--muted); }
+body[data-focus-preset="wavehalo"] footer .icon.on { color: var(--red); }

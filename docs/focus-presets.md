@@ -34,4 +34,6 @@ document.currentScript.mountFocus = ({ root, background, renderCover }) => {
 - `reduceMotion`：系统动态效果偏好（MediaQueryList）。`signal`：本次挂载的 AbortSignal，可传给事件监听。`dispose()` 可选，用来停止动画帧、定时器和其他资源。
 - 样式表仅在当前预设激活时生效。用 `body[data-focus-preset="my-theme"]` 限定标题栏和播放栏等全局选择器。不要接管原播放控件。切换或退出时宿主撤销订阅、卸载样式并清空两个挂载点。
 
-完整示例见 [`plugins/vinyl/focus/`](../plugins/vinyl/focus)。
+内置的可选预设：
+- [黑胶与极光](../plugins/vinyl/focus)：唱盘、唱针与音频驱动的极光丝带。
+- [环形声谱](../plugins/wavehalo/focus)：封面铺底，中央圆形封面持续缓慢旋转，外圈白色光条按低、中、高频能量伸缩。暂停、设备不支持音频分析或系统启用“减少动态效果”时，仍保留封面旋转与光环呼吸，不模拟音频数据。
