@@ -167,6 +167,10 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             chrome = []
             for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), ('viewQueue', 'queueDialog')]:
                 js(f"$('{opener}').click()")
+                if dialog != 'settings':
+                    assert js(f"""(() => {{ const panel = $('{dialog}').querySelector('.importFields, .queueCard');
+                      const s = getComputedStyle(panel);
+                      return s.backgroundColor === 'rgba(0, 0, 0, 0)' && s.borderTopStyle === 'none'; }})()"""), dialog
                 chrome.append(js(f"""(() => {{ const d=$('{dialog}'), h=d.querySelector('header h2'), b=d.querySelector('.close');
                   return [getComputedStyle(d).backgroundColor, getComputedStyle(d).borderRadius,
                     getComputedStyle(h).font, getComputedStyle(b).borderRadius, b.offsetWidth,
