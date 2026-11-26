@@ -5,10 +5,11 @@ const fs = require('node:fs');
 const document = { currentScript: {}, createElement: () => ({}), addEventListener() {} };
 const saved = new Map();
 const localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k,v) => saved.set(k,v) };
-let now = 0, nextFrame, path;
-const sliders = ['bass','mid','high','ring','width','inward','attack','release'].map(key => ({dataset:{key}, setAttribute(){}}));
+let now = 0, nextFrame, path, bassColor = false;
+const ring = {toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
+const sliders = ['bass','mid','high','colorAt','ring','width','inward','attack','release'].map(key => ({dataset:{key}, setAttribute(){}}));
 const reset = {}, panel = {querySelectorAll: () => sliders, querySelector: s => s === 'button' ? reset : {}};
-const root = {querySelector: s => s === '.halo-tuner' ? panel : {setAttribute: (_, value) => { path = value; }}};
+const root = {querySelector: s => s === '.halo-tuner' ? panel : s === '.halo-ring' ? ring : {setAttribute: (_, value) => { path = value; }}};
 vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/preset.js'), 'utf8'), {
   document, localStorage, performance: { now: () => now },
   requestAnimationFrame(fn) { nextFrame = fn; return 1; }, cancelAnimationFrame() { nextFrame = undefined; },
@@ -38,6 +39,11 @@ for (const levels of [[90,0,0],[0,90,0],[0,0,90],[100,100,100]]) {
   for (let n = 0; n < 96; n++) frame();
   assert.equal(path, rest); // missing packets release fully
 }
+packet([0,100,100]); assert(!bassColor);
+packet([72,0,0]); assert(bassColor); packet([68,0,0]); assert(bassColor);
+packet([60,0,0]); assert(!bassColor); tune('colorAt', 55); assert(bassColor);
+for (let n = 0; n < 12; n++) frame(); assert(!bassColor);
+packet([80,0,0]); preset.update({playing:false}); assert(!bassColor); preset.update({playing:true});
 tune('attack', 0); tune('release', 0); packet([50,0,0]);
 const half = Math.max(...bars()); packet([100,0,0]);
 assert(Math.abs(Math.max(...bars()) / half - 2) < .01);

@@ -4,6 +4,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   // [label, default, min, max, unit]. Settings belong only to this preset.
   const fields = {
     bass: ["低频振幅", 34, 0, 80, ""], mid: ["中频振幅", 27, 0, 80, ""], high: ["高频振幅", 46, 0, 80, ""],
+    colorAt: ["低音变色阈值", 72, 10, 100, "%"],
     ring: ["整圈响应", 65, 0, 100, "%"], width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
     attack: ["上升时间", 32, 0, 250, " ms"], release: ["回落时间", 180, 0, 500, " ms"],
   };
@@ -29,6 +30,13 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     `<label>${label}<span aria-hidden="true"><b data-value="${k}"></b>${unit}</span><input type="range" data-key="${k}" min="${min}" max="${max}"></label>`).join("")}
     <button type="button">恢复默认</button></div></details>`;
   const art = root.querySelector(".halo-art"), path = root.querySelector(".halo-ring path");
+  const ring = root.querySelector(".halo-ring");
+  let accented = false;
+  function updateColor(bass) {
+    // Absolute meter level with a dead band, independent of bar gain and smoothing.
+    const next = bass >= (tuning.colorAt - (accented ? 8 : 0)) / 100;
+    if (next !== accented) { accented = next; ring.toggleAttribute("data-bass", next); }
+  }
   const panel = root.querySelector(".halo-tuner");
   const sliders = [...panel.querySelectorAll("input")];
   function syncControls() {
@@ -41,7 +49,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   }
   syncControls();
   function apply() {
-    updateWeights(); draw(); syncControls();
+    updateWeights(); draw(); updateColor(target[0]); syncControls();
     try { localStorage.setItem(storageKey, JSON.stringify(tuning)); } catch {}
   }
   panel.oninput = ({target}) => { tuning[target.dataset.key] = target.valueAsNumber; apply(); };
@@ -95,7 +103,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   function tick(now) {
     frame = 0;
     const dt = Math.min(80, now - (last || now - 16)); last = now;
-    if (now - received > 160) target.fill(0);
+    if (now - received > 160) { target.fill(0); updateColor(0); }
     let changed = false;
     for (let i = 0; i < 3; i++) {
       const gap = target[i] - energy[i], time = gap > 0 ? tuning.attack : tuning.release;
@@ -112,7 +120,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     requestLevels(want);
     if (!want) {
       cancelAnimationFrame(frame); frame = last = 0;
-      energy.fill(0); target.fill(0); draw();
+      energy.fill(0); target.fill(0); updateColor(0); draw();
     }
   }
   draw();
@@ -126,6 +134,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
       if (values === null) { unsupported = true; listen(false); return; }
       received = performance.now();
       for (let i = 0; i < 3; i++) target[i] = Math.max(0, Math.min(1, (Number(values[i]) || 0) / 100));
+      updateColor(target[0]);
       if (!frame && target.some(Boolean)) frame = requestAnimationFrame(tick);
     },
     dispose() { listen(false); }

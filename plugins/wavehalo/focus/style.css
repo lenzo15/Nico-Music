@@ -25,6 +25,8 @@ body[data-focus-preset="wavehalo"] #focusBackground::after {
 .halo-ring { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #fffdf9;
   stroke-width: 3.7; stroke-linecap: round; filter: drop-shadow(0 0 3px #fffc);
   animation: halo-breathe 4.8s ease-in-out infinite alternate; }
+.halo-ring[data-bass] { stroke: #80edff;
+  filter: drop-shadow(0 0 3px #baf7ff) drop-shadow(0 0 7px #49ceffb8); }
 @keyframes halo-breathe { from { opacity: .82; transform: scale(.997); } to { opacity: 1; transform: scale(1.008); } }
 
 .halo-tuner { position: absolute; z-index: 1; top: 14px; right: 18px; color: #fff; }
