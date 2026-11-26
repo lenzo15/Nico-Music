@@ -8,6 +8,8 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <memory>
+#include "focus_spectrum.hpp"
 
 // Read-only process loopback. Never open a microphone or the system mix.
 class AudioMeter {
@@ -31,7 +33,9 @@ class AudioMeter {
             SUCCEEDED(client->GetService(IID_PPV_ARGS(&capture))) && SUCCEEDED(client->Start());
     }
 public:
-    bool start() {
+    std::unique_ptr<FocusSpectrum> spectrum;
+    bool start(bool detailed = false) {
+        if (detailed) spectrum = std::make_unique<FocusSpectrum>();
         AUDIOCLIENT_ACTIVATION_PARAMS params{};
         params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
         params.ProcessLoopbackParams = {GetCurrentProcessId(), PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE};
@@ -53,8 +57,14 @@ public:
             HRESULT hr = capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
             if (hr == AUDCLNT_S_BUFFER_EMPTY) break;
             if (FAILED(hr)) return Result::failed;
-            if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) { low.fill(0); body.fill(0); }
+            if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
+                low.fill(0); body.fill(0); if (spectrum) spectrum->reset();
+            }
             auto pcm = reinterpret_cast<const short*>(data);
+            if (spectrum) for (UINT32 i = 0; i < frames; ++i) {
+                if (flags & AUDCLNT_BUFFERFLAGS_SILENT) spectrum->push(0, 0);
+                else spectrum->push(pcm[2*i]/32768.f, pcm[2*i+1]/32768.f);
+            }
             for (UINT32 i = 0; i < frames; ++i) for (int ch = 0; ch < 2; ++ch) {
                 const double x = flags & AUDCLNT_BUFFERFLAGS_SILENT ? 0. : pcm[2*i+ch]/32768.;
                 // One-pole crossovers at 180 Hz and 3.2 kHz (48 kHz PCM).

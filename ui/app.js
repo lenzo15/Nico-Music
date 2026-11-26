@@ -762,7 +762,7 @@ bridge?.addEventListener("message", (e) => {
     return;
   }
   if (msg.windowState) return;
-  if ("levels" in msg) { focusView.levels(msg.levels); return; }
+  if ("levels" in msg) { focusView.levels(msg.levels, msg.spectrum); return; }
   if (msg.focusPresets) focusView.discover(msg.focusPresets);
   if (msg.repeat && msg.repeat !== state.repeat) {
     if (state.repeat) toast(repeatModes[msg.repeat].label);

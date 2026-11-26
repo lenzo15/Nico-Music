@@ -121,10 +121,11 @@ function createFocusView() {
       root.replaceChildren(); sheet.media = "all"; document.body.dataset.focusPreset = id;
       lifecycle = new AbortController();
       instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => cover(el, current()),
-        requestLevels(on) {
+        requestLevels(on, options) {
           if (generation !== token) return;
           const want = !!on && !document.hidden && !reduceMotion.matches && !!state.playing && !state.paused;
-          if (want !== listening) { listening = want; send(want ? "levels on " + id : "levels off"); }
+          const mode = want && (options?.spectrum ? "spectrum" : "on");
+          if (mode !== listening) { listening = mode; send(mode ? `levels ${mode} ${id}` : "levels off"); }
         }
       });
       if (typeof instance?.update !== "function") throw new Error("missing update");
@@ -161,7 +162,7 @@ function createFocusView() {
     if (!panel.hidden && e.key === "Escape" && !document.querySelector("dialog[open]")) { e.preventDefault(); close(); }
   });
   document.addEventListener("visibilitychange", update); reduceMotion.addEventListener("change", update);
-  return {open, close, update, discover, levels(value) {
-    try { if (listening) instance?.levels?.(value); } catch (error) { failed(error); }
+  return {open, close, update, discover, levels(value, spectrum) {
+    try { if (listening) instance?.levels?.(value, spectrum); } catch (error) { failed(error); }
   }};
 }

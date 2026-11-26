@@ -6,7 +6,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     bass: ["低频振幅", 34, 0, 80, ""], mid: ["中频振幅", 27, 0, 80, ""], high: ["高频振幅", 46, 0, 80, ""],
     colorAt: ["低音提亮阈值", 72, 10, 100, "%"], brightenMs: ["提亮时间", 150, 0, 1000, " ms"],
     ring: ["整圈响应", 65, 0, 100, "%"], width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
-    attack: ["上升时间", 32, 0, 250, " ms"], release: ["回落时间", 180, 0, 500, " ms"],
+    attack: ["上升时间", 12, 0, 250, " ms"], release: ["回落时间", 85, 0, 500, " ms"],
   };
   const storageKey = "wavehalo.tuning.v1";
   const defaults = Object.fromEntries(Object.entries(fields).map(([k, [, value]]) => [k, value]));
@@ -50,7 +50,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   }
   syncControls();
   function apply() {
-    updateWeights(); draw(); updateColor(target[0]); syncControls();
+    mapSpectrum(); draw(); updateColor(bassLevel); syncControls();
     try { localStorage.setItem(storageKey, JSON.stringify(tuning)); } catch {}
   }
   panel.oninput = ({target}) => { tuning[target.dataset.key] = target.valueAsNumber; apply(); };
@@ -62,41 +62,37 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     }
   }, {capture: true, signal});
 
-  const radius = 160, count = 128;
+  // One fixed frequency axis, starting at the upper right. Different notes
+  // occupy different spokes; no mirrored lobes, synthetic beats or random motion.
+  const count = 128, radius = 160;
   const bins = Array.from({length: count}, (_, i) => {
-    const angle = i * 2 * Math.PI / count;
-    return {angle, x: Math.cos(angle), y: Math.sin(angle), base: 6 + 1.5 * Math.cos(4 * angle)};
+    const angle = i * 2 * Math.PI / count - Math.PI / 4;
+    const hz = (3 + 40 * Math.expm1(Math.log1p(1536 / 40) * (i + .5) / count)) * 48000 / 4096;
+    const mix = (lo, hi) => Math.max(0, Math.min(1, Math.log(hz / lo) / Math.log(hi / lo)));
+    return {x: Math.cos(angle), y: Math.sin(angle), low: 1 - mix(140, 240), high: mix(2400, 4200)};
   });
-  function updateWeights() {
-    for (const bin of bins) {
-      const lobe = (center, width) => Math.exp(-(Math.sin(bin.angle - center) ** 2) / (width * (tuning.width / 100) ** 2));
-      const ripple = .55 + .45 * Math.cos(7 * bin.angle) ** 2;
-      // The host supplies three levels, not 128 FFT bins. Crossfade them around
-      // the whole circle, then lay the narrow accents on top without raising their ceiling.
-      const weight = (phase, peak) => {
-        const blend = (1 + Math.cos(2 * bin.angle - phase)) / 2;
-        const bed = tuning.ring / 100 * (.22 + .38 * blend * blend);
-        const accent = ripple * peak;
-        return bed + (1 - bed) * accent;
-      };
-      bin.bass = tuning.bass * weight(0, lobe(1.32, .075));
-      bin.mid = tuning.mid * weight(2 * Math.PI / 3, lobe(.28, .036));
-      bin.high = tuning.high * weight(4 * Math.PI / 3, lobe(-.58, .009));
+  const raw = new Float32Array(count), target = new Float32Array(count), energy = new Float32Array(count);
+  let bassLevel = 0, active = false, unsupported = false, frame = 0, last = 0, received = 0;
+  function mapSpectrum() {
+    const floor = Math.min(...raw), bed = tuning.ring / 100;
+    const at = i => raw[Math.max(0, Math.min(count - 1, i))];
+    for (let i = 0; i < count; i++) {
+      const {low, high} = bins[i];
+      const gain = low * tuning.bass + (1 - low - high) * tuning.mid + high * tuning.high;
+      // Compare neighbours in THIS spectrum, not successive packets. Keep a
+      // little texture between peaks without pumping the entire circumference.
+      const surround = (at(i-3) + at(i-2) + at(i+2) + at(i+3)) / 4;
+      const ridge = Math.max(0, raw[i] - surround);
+      const body = raw[i] - floor;
+      target[i] = Math.min(80, gain * (2.7 * ridge + 1.6 * bed * body) * body);
     }
   }
-  updateWeights();
-  const energy = [0, 0, 0], target = [0, 0, 0];
-  let active = false, unsupported = false, frame = 0, last = 0, received = 0;
   function draw() {
-    // Remove the spatial floor of this frame, not the change since the last packet.
-    let floor = Infinity;
-    for (const bin of bins) {
-      bin.level = bin.bass * energy[0] + bin.mid * energy[1] + bin.high * energy[2];
-      floor = Math.min(floor, bin.level);
-    }
-    const d = bins.map(({x,y,base,level}) => {
-      const pulse = Math.min(80, level - floor);
-      const inner = radius - pulse * tuning.inward / 100, outer = radius + base + pulse;
+    const shoulder = .32 * (tuning.width / 100) ** 2;
+    const d = bins.map(({x,y}, i) => {
+      // Width affects only the short shoulders; a narrow note stays a needle.
+      const pulse = Math.min(80, Math.max(energy[i], shoulder * (energy[i-1] || 0), shoulder * (energy[i+1] || 0)));
+      const inner = radius - pulse * tuning.inward / 100, outer = radius + 5 + pulse;
       return `M${(x * inner).toFixed(2)},${(y * inner).toFixed(2)}L${(x * outer).toFixed(2)},${(y * outer).toFixed(2)}`;
     });
     path.setAttribute("d", d.join(""));
@@ -104,24 +100,24 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   function tick(now) {
     frame = 0;
     const dt = Math.min(80, now - (last || now - 16)); last = now;
-    if (now - received > 160) { target.fill(0); updateColor(0); }
+    if (now - received > 160) { raw.fill(0); target.fill(0); bassLevel = 0; updateColor(0); }
     let changed = false;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < count; i++) {
       const gap = target[i] - energy[i], time = gap > 0 ? tuning.attack : tuning.release;
       changed ||= gap !== 0;
       energy[i] = !time || Math.abs(gap) < .004 ? target[i] : energy[i] + gap * (1 - Math.exp(-dt / time));
     }
     if (changed) draw();
-    if (changed || target.some(Boolean)) frame = requestAnimationFrame(tick);
+    if (changed || bassLevel || target.some(Boolean)) frame = requestAnimationFrame(tick);
     else last = 0;
   }
   function listen(want) {
     if (active === want) return;
     active = want;
-    requestLevels(want);
+    requestLevels(want, {spectrum: true});
     if (!want) {
       cancelAnimationFrame(frame); frame = last = 0;
-      energy.fill(0); target.fill(0); updateColor(0); draw();
+      energy.fill(0); raw.fill(0); target.fill(0); bassLevel = 0; updateColor(0); draw();
     }
   }
   draw();
@@ -130,13 +126,20 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
       renderCover(wash); renderCover(art);
       listen(playing && !document.hidden && !reduceMotion.matches && !unsupported);
     },
-    levels(values) {
+    levels(values, spectrum) {
       if (!active) return;
       if (values === null) { unsupported = true; listen(false); return; }
       received = performance.now();
-      for (let i = 0; i < 3; i++) target[i] = Math.max(0, Math.min(1, (Number(values[i]) || 0) / 100));
-      updateColor(target[0]);
-      if (!frame && target.some(Boolean)) frame = requestAnimationFrame(tick);
+      const norm = v => Math.max(0, Math.min(1, (Number(v) || 0) / 100));
+      bassLevel = norm(values[0]);
+      for (let i = 0; i < count; i++) {
+        const {low, high} = bins[i];
+        // Older hosts still send three levels: interpolate those, never invent peaks.
+        raw[i] = spectrum?.length === count ? norm(spectrum[i]) :
+          low * bassLevel + (1 - low - high) * norm(values[1]) + high * norm(values[2]);
+      }
+      mapSpectrum(); updateColor(bassLevel);
+      if (!frame && (bassLevel || target.some(Boolean))) frame = requestAnimationFrame(tick);
     },
     dispose() { listen(false); }
   };

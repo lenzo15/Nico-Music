@@ -169,7 +169,13 @@ void meterTick() {
     case AudioMeter::Result::failed: meterUnavailable(); return;
     case AudioMeter::Result::fresh:
         auto json = L"{\"levels\":[" + std::to_wstring(levels[0]) + L"," +
-            std::to_wstring(levels[1]) + L"," + std::to_wstring(levels[2]) + L"]}";
+            std::to_wstring(levels[1]) + L"," + std::to_wstring(levels[2]) + L"]";
+        if (meter->spectrum) {
+            json += L",\"spectrum\":[";
+            for (int band : meter->spectrum->read()) { json += std::to_wstring(band); json += L','; }
+            json.back() = L']';
+        }
+        json += L'}';
         view->PostWebMessageAsJson(json.c_str());
     }
 }
@@ -508,10 +514,10 @@ void handle(const string &message) {
         if (cmd == "levels") {
             stopMeter();
             const auto [action, id] = split(arg);
-            if (action == "on" && !hiddenToTray && station->active() >= 0 &&
+            if ((action == "on" || action == "spectrum") && !hiddenToTray && station->active() >= 0 &&
                 std::any_of(focusPresets.begin(), focusPresets.end(), [&](const auto& p) { return p.id == id; })) {
                 meter = std::make_unique<AudioMeter>();
-                if (!meter->start() || !SetTimer(window, 2, 32, nullptr)) meterUnavailable();
+                if (!meter->start(action == "spectrum") || !SetTimer(window, 2, 32, nullptr)) meterUnavailable();
             }
             return;
         }

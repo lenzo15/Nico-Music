@@ -45,13 +45,15 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
 exe = Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     root = Path(tmp)
-    minimal = any(flag in sys.argv for flag in ('--minimal', '--broken-preset', '--hot-plugins'))
+    minimal = any(flag in sys.argv for flag in ('--minimal', '--broken-preset', '--hot-plugins', '--spectrum'))
     if minimal:
         app = root / 'standalone'
         app.mkdir()
         for filename in (exe.name, 'libmpv-2.dll'):
             shutil.copy2(exe.parent / filename, app / filename)
         shutil.copytree(exe.parent / 'ui', app / 'ui')
+        if '--spectrum' in sys.argv:
+            shutil.copytree(exe.parent / 'plugins/wavehalo', app / 'plugins/wavehalo')
         exe = app / exe.name
         if '--broken-preset' in sys.argv:
             preset = app / 'plugins/broken/focus'
@@ -68,7 +70,11 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     for name in 'ABC':
         with wave.open(str(media / f'{name}.wav'), 'wb') as w:
             w.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
-            if name == 'C' and '--focus' in sys.argv:
+            if name == 'C' and '--spectrum' in sys.argv:
+                from math import sin, tau
+                tone = lambda hz: b''.join(int(10000*sin(tau*hz*i/8000)).to_bytes(2, 'little', signed=True) for i in range(8000))
+                w.writeframes((tone(500) + tone(1800)) * 12)
+            elif name == 'C' and '--focus' in sys.argv:
                 # One second of a quiet 1 kHz tone, then two seconds of silence.
                 period = b''.join(v.to_bytes(2, 'little', signed=True) for v in (0,362,512,362,0,-362,-512,-362))
                 w.writeframes((period * 1000 + bytes(32000)) * 8)
@@ -102,6 +108,27 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         def js(expr):
             return cdp('Runtime.evaluate', {'expression': expr, 'returnByValue': True})['result'].get('value')
         until(lambda: js('document.querySelectorAll(".row").length===3'))
+        if '--spectrum' in sys.argv:
+            js("""window.peaks=new Set();chrome.webview.addEventListener('message',({data})=>{
+                if(data.spectrum?.length===128) peaks.add(data.spectrum.indexOf(Math.max(...data.spectrum)));
+            });send('play 0')""")
+            until(lambda: js('state.index===0 && state.playing'))
+            js("$('cover').click()")
+            until(lambda: js("document.body.dataset.focusPreset==='wavehalo' && !!document.querySelector('.halo-ring path')"))
+            # Actual loopback through native FFT, host bridge and mounted preset.
+            seen = set()
+            def both_needles():
+                seen.add(js("""(()=>{const coords=document.querySelector('.halo-ring path').getAttribute('d');
+                    const lengths=[...coords.matchAll(/M([-\\d.]+),([-\\d.]+)/g)].map(m=>160-Math.hypot(+m[1],+m[2]));
+                    return lengths.indexOf(Math.max(...lengths));})()"""))
+                return any(21<=i<=26 for i in seen) and any(52<=i<=57 for i in seen)
+            until(both_needles)
+            assert js('[...peaks].some(i=>i>=21 && i<=26) && [...peaks].some(i=>i>=52 && i<=57)')
+            js("send('pause')")
+            until(lambda: js('state.paused'))
+            assert js("document.querySelector('.halo-ring path').getAttribute('d').split('M').length===129")
+            print('OK: real 500/1800 Hz process-loopback -> distinct spectrum bands -> WaveHalo')
+            sys.exit(0)
         if '--hot-plugins' in sys.argv:
             from hot_plugins import exercise
             exercise(app, root, profile, js, until)

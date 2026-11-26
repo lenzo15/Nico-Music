@@ -16,7 +16,7 @@ vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/pr
   requestAnimationFrame(fn) { nextFrame = fn; return 1; }, cancelAnimationFrame() { nextFrame = undefined; },
 });
 const mount = () => document.currentScript.mountFocus({root, background: {append() {}},
-  renderCover() {}, requestLevels() {}, reduceMotion: {matches: false} });
+  renderCover() {}, requestLevels(on, options) { if (on) assert.equal(options.spectrum, true); }, reduceMotion: {matches: false} });
 const preset = mount();
 function tune(key, valueAsNumber) { panel.oninput({target: {dataset: {key}, valueAsNumber}}); }
 const brightenTime = () => ringStyle.get('--halo-brighten-time');
@@ -25,43 +25,39 @@ tune('brightenMs', 425); assert.equal(brightenTime(), '425ms');
 const rest = path;
 preset.update({playing: true});
 function frame() { now += 16; const fn = nextFrame; nextFrame = undefined; fn?.(now); }
-function packet(levels) { preset.levels(levels); frame(); frame(); }
+function packet(levels, spectrum) { preset.levels(levels, spectrum); frame(); frame(); }
 function bars() {
   return [...path.matchAll(/M([-\d.]+),([-\d.]+)L([-\d.]+),([-\d.]+)/g)].map(([,x,y,u,v]) => {
     assert(Math.hypot(u,v) < 250); // leave room for the glow at maximum drive
     return 160 - Math.hypot(x,y);
   });
 }
-for (const levels of [[90,0,0],[0,90,0],[0,0,90],[100,100,100]]) {
-  for (let n = 0; n < 12; n++) packet(levels);
-  const held = path;
-  const active = bars();
-  assert.equal(active.length, 128); assert(Math.abs(Math.min(...active)) < .01); // common radial displacement removed
-  assert(Math.max(...active) > 12); // local peaks survive
-  for (let n = 0; n < 12; n++) packet(levels);
-  assert.equal(path, held); // constant absolute energy holds, without onset accents
-  for (let n = 0; n < 96; n++) frame();
-  assert.equal(path, rest); // missing packets release fully
+const single = (index, strength=85) => Array.from({length:128}, (_, i) => i===index ? strength : 0);
+for (const index of [2, 14, 37, 83, 119]) {
+  const levels = [68,60,47], spectrum = single(index);
+  for (let n=0; n<30; ++n) packet(levels, spectrum);
+  const held = path, lengths = bars(), peak = Math.max(...lengths);
+  assert.equal(lengths.length, 128); assert.equal(lengths.indexOf(peak), index);
+  assert(peak > 35 && lengths.filter(v => v > peak * .5).length===1);
+  for (let n=0; n<4; ++n) packet(levels, spectrum);
+  assert.equal(path, held); // a sustained note doesn't decay like a transient
+  for (let n=0; n<100; ++n) frame();
+  assert.equal(path, rest);
 }
 packet([0,100,100]); assert(!bassColor);
 packet([72,0,0]); assert(bassColor); packet([68,0,0]); assert(bassColor);
 packet([60,0,0]); assert(!bassColor); tune('colorAt', 55); assert(bassColor);
 for (let n = 0; n < 12; n++) frame(); assert(!bassColor);
 packet([80,0,0]); preset.update({playing:false}); assert(!bassColor); preset.update({playing:true});
-tune('attack', 0); tune('release', 0); packet([50,0,0]);
-const half = Math.max(...bars()); packet([100,0,0]);
-assert(Math.abs(Math.max(...bars()) / half - 2) < .01);
-tune('width', 10);
-const moving = () => bars().filter(v => v > 1).length;
-const wideCoverage = moving(); tune('ring', 0);
-assert(wideCoverage > moving() + 32); // broad response still reaches beyond the narrow peaks
-tune('width', 100); const broad = bars().filter(v => v > 2).length; tune('width', 25);
-assert(bars().filter(v => v > 2).length < broad);
-tune('bass', 0); assert.equal(path, rest);
-tune('bass', 80); tune('inward', 0); assert(Math.max(...bars()) < .01 && path !== rest);
-packet([0,0,0]); assert.equal(path, rest);
+tune('attack', 0); tune('release', 0); packet([65,77,50], single(2,60));
+const half = Math.max(...bars()); packet([65,77,50], single(2,80)); assert(Math.max(...bars()) > half * 1.4);
+const wide = bars()[3]; tune('width', 20); assert(bars()[3] < wide / 4);
+packet([65,77,50], Array(128).fill(55)); assert.equal(path, rest); // no common displacement
+tune('bass', 0); packet([90,0,0], single(2)); assert.equal(path, rest);
+tune('bass', 80); tune('inward', 0); packet([90,0,0], single(2)); assert(Math.max(...bars()) < .01 && path !== rest);
+packet([0,0,0], Array(128).fill(0)); assert.equal(path, rest);
 preset.dispose(); assert(!nextFrame);
 ringStyle.clear();
 const again = mount(); assert.equal(sliders[0].value, 80); assert.equal(brightenTime(), '425ms');
 reset.onclick(); assert.equal(sliders[0].value, 34); assert.equal(brightenTime(), '150ms'); again.dispose();
-console.log('PASS: sustained absolute levels, linear gain, live shape/response controls, persistence and reset');
+console.log('PASS: independent frequency needles, sustained absolute levels, live shape/response controls, persistence and reset');
