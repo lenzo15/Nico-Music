@@ -33,7 +33,11 @@ NicoMusic 仅用于学习、研究和个人使用。项目与第三方音源服�
 
 更新来源固定为 [NicoMusic Releases](https://github.com/lenzo15/Nico-Music/releases)，只检查已发布的正式版。手动检查每分钟最多一次。发现新版后，点击「设置 → 关于 → 更新并重启」即可原地更新，无需选择目录。
 
-发布新版本时，请同时更新 `CMakeLists.txt` 中 `project(NicoMusic VERSION X.Y.Z ...)` 的版本号，并使用对应的 `vX.Y.Z` Release 标签；附加以 `windows-x64.zip` 或 `win-x64.zip` 结尾的安装包（例如 `NicoMusic-v1.1.0-windows-x64.zip`），播放器会自动选择该包，而不是源码或 ARM64 包。下载后的程序版本取自构建时的版本号，不会把 GitHub 上的版本号当成当前版本。
+本地修正版的更新器使用安装包内的 [随包插件清单](plugins/bundled-plugins.tsv)：已安装的插件按包更新；首次随包版本高于当前播放器版本的插件会自动添加；此前已随包但被移除的插件保持不装。未提供清单的更新包仍只更新已安装插件。升级前请备份自己修改过的插件文件。
+
+**旧版限制：** 发起升级的是旧 EXE 内置的更新器。从已发布的 v1.0.2 或 v1.0.3 首次升级时，缺失的插件仍需从新版 Windows ZIP 的 `NicoMusic/plugins/` 手动复制一次。修正版不会猜测此前缺失的插件是否被主动删除。
+
+发布新版本时，新增的随包插件须在清单中记录首次发布版本（后续不要改动）。请同时更新 `CMakeLists.txt` 中 `project(NicoMusic VERSION X.Y.Z ...)` 的版本号，并使用对应的 `vX.Y.Z` Release 标签；附加以 `windows-x64.zip` 或 `win-x64.zip` 结尾的安装包（例如 `NicoMusic-v1.1.0-windows-x64.zip`），播放器会自动选择该包，而不是源码或 ARM64 包。下载后的程序版本取自构建时的版本号，不会把 GitHub 上的版本号当成当前版本。
 
 ## 基础插件
 

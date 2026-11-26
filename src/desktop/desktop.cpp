@@ -265,7 +265,7 @@ void publishUpdates(bool force = false) {
     if (state->phase == "downloaded") {
         try {
             if (!install) throw std::runtime_error(installError.empty() ? "请重新下载更新" : installError);
-            if (!install->started()) install->start();
+            if (!install->started()) install->start(NICOMUSIC_VERSION);
             else if (install->readyToExit()) PostMessageW(window, WM_CLOSE, 0, 0);
             state->phase = "installing";
         } catch (const std::exception& e) {

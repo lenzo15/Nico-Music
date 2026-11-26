@@ -1,5 +1,6 @@
 # Embedded in NicoMusic.exe; only the native host creates this job and its markers.
-param([Parameter(Mandatory=$true)][int]$ParentId, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{64}$')][string]$Sha256)
+param([Parameter(Mandatory=$true)][int]$ParentId, [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{64}$')][string]$Sha256,
+      [Parameter(Mandatory=$true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')][version]$FromVersion)
 $ErrorActionPreference = 'Stop'
 $job = $PSScriptRoot
 # Never recursively clean an arbitrary directory when the script is run standalone.
@@ -10,6 +11,7 @@ $backup = [IO.Path]::Combine($job, 'backup')
 $exe = [IO.Path]::Combine($root, 'NicoMusic.exe')
 $files = New-Object 'System.Collections.Generic.List[string]'
 $applied = New-Object 'System.Collections.Generic.List[string]'
+$createdDirs = New-Object 'System.Collections.Generic.List[string]'
 $keepBackup = $false
 $appExited = $false
 $parent = $null
@@ -25,6 +27,16 @@ function Check-Links([string]$path) {
     }
 }
 function Ensure-Parent([string]$path) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path)) }
+# Record only newly created installation directories, parent first. A failed update
+# must not leave an empty plugins/<id> which the next run would treat as installed.
+function Ensure-InstallParent([string]$path) {
+    $dir = [IO.Path]::GetDirectoryName($path)
+    if (![IO.Directory]::Exists($dir)) {
+        Ensure-InstallParent $dir
+        [void][IO.Directory]::CreateDirectory($dir)
+        $createdDirs.Add($dir)
+    }
+}
 function Restart-Player { [void][Diagnostics.Process]::Start((New-Object Diagnostics.ProcessStartInfo -Property @{ FileName=$exe; WorkingDirectory=$root; UseShellExecute=$false })) }
 function Report([string]$message) { Add-Type -AssemblyName System.Windows.Forms; [void][Windows.Forms.MessageBox]::Show($message, 'NicoMusic 更新') }
 Check-Links $job # validate before entering the cleanup scope
@@ -82,6 +94,20 @@ try {
     foreach ($required in 'NicoMusic.exe','NicoMusicCLI.exe','libmpv-2.dll','ui/index.html') {
         if (![IO.File]::Exists([IO.Path]::Combine($stage,$required))) { throw "缺少 $required" }
     }
+    # Read only the verified incoming package, not the user's live plugin folder.
+    # Packages without a catalog retain the legacy installed-only policy.
+    $introduced = @{}
+    $catalog = [IO.Path]::Combine($stage,'plugins','bundled-plugins.tsv')
+    if ([IO.File]::Exists($catalog)) {
+        if ((Get-Item -LiteralPath $catalog).Length -gt 64KB) { throw '随包插件清单过大。' }
+        foreach ($line in [IO.File]::ReadAllLines($catalog)) {
+            if (!$line -or $line.StartsWith('#')) { continue }
+            if ($line -cnotmatch '^([a-z0-9][a-z0-9_-]{0,63})\t([0-9]+\.[0-9]+\.[0-9]+)$') { throw '随包插件清单格式错误。' }
+            $id = $Matches[1]
+            if ($introduced.ContainsKey($id)) { throw "随包插件清单中存在重复项：$id" }
+            $introduced[$id] = [version]$Matches[2]
+        }
+    }
     [IO.File]::WriteAllText([IO.Path]::Combine($job,'ready'),'')
     $parent.WaitForExit()
     $appExited = $true
@@ -90,9 +116,12 @@ try {
     foreach ($rel in (@($files | Where-Object { $_ -ne 'NicoMusic.exe' }) + 'NicoMusic.exe')) {
         $src = [IO.Path]::Combine($stage,$rel); $dst = [IO.Path]::Combine($root,$rel); $old = [IO.Path]::Combine($backup,$rel)
         Check-Links $dst
-        # In-place updates refresh installed packages, never reinstall an absent optional plugin.
-        if ($rel -match '^plugins/([^/]+)/' -and ![IO.Directory]::Exists([IO.Path]::Combine($root,'plugins',$Matches[1]))) { continue }
-        Ensure-Parent $dst
+        if ($rel -match '^plugins/([^/]+)/') {
+            $id = $Matches[1]
+            if (![IO.Directory]::Exists([IO.Path]::Combine($root,'plugins',$id)) -and
+                (!$introduced.ContainsKey($id) -or $introduced[$id] -le $FromVersion)) { continue }
+        }
+        Ensure-InstallParent $dst
         # Same-volume moves. Record each backup immediately, even if placing the new file fails.
         if ([IO.File]::Exists($dst)) {
             Ensure-Parent $old; [IO.File]::Move($dst,$old); $applied.Add($rel)
@@ -112,6 +141,9 @@ try {
                 [IO.File]::Delete($dst)
                 if ([IO.File]::Exists($old)) { [IO.File]::Move($old,$dst) }
             } catch { $keepBackup = $true }
+        }
+        for ($i=$createdDirs.Count-1; $i -ge 0; $i--) {
+            try { [IO.Directory]::Delete($createdDirs[$i], $false) } catch { $keepBackup = $true }
         }
         if ($keepBackup) { Report "更新失败，部分文件无法还原，备份保留在 $backup。`n$reason" }
         else { Report "更新失败，已保留原版本。请检查文件占用和目录权限。`n$reason"; Restart-Player }

@@ -33,7 +33,10 @@ public:
     }
     std::filesystem::path package() const { return dir / L"package.zip"; }
     bool started() const { return process != nullptr; }
-    void start() {
+    void start(const std::string& fromVersion) {
+        // Production passes the running binary's build version, never a remote tag.
+        if (fromVersion.empty() || fromVersion.find_first_not_of("0123456789.") != std::string::npos)
+            throw std::runtime_error("无效的当前版本");
         auto resource = FindResourceW(nullptr, MAKEINTRESOURCEW(102), RT_RCDATA);
         auto bytes = resource ? SizeofResource(nullptr, resource) : 0;
         auto loaded = bytes ? LoadResource(nullptr, resource) : nullptr;
@@ -50,7 +53,8 @@ public:
         auto ps = std::filesystem::path(system) / L"WindowsPowerShell/v1.0/powershell.exe";
         // -File (not -Command): paths are literal process arguments, not code.
         auto cmd = L"\"" + ps.wstring() + L"\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" +
-            (dir / L"install.ps1").wstring() + L"\" " + std::to_wstring(GetCurrentProcessId()) + L" " + std::wstring(hash.begin(), hash.end());
+            (dir / L"install.ps1").wstring() + L"\" " + std::to_wstring(GetCurrentProcessId()) + L" " + std::wstring(hash.begin(), hash.end()) +
+            L" " + std::wstring(fromVersion.begin(), fromVersion.end());
         STARTUPINFOW si{sizeof(si)}; PROCESS_INFORMATION pi{};
         if (!CreateProcessW(ps.c_str(), cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, system, &si, &pi))
             throw std::runtime_error("无法启动更新程序，当前版本未更改");

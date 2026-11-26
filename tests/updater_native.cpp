@@ -41,12 +41,12 @@ int wmain(int argc, wchar_t** argv) {
         if (Updater::validAsset(bad)) throw std::runtime_error("invalid digest accepted");
         if (argc == 1) { std::cout << "OK: native asset validation\n"; return 0; }
         // Test-only handoff: the fixture is private and contains no installed player.
-        if (std::wstring(argv[1]) == L"--fixture-install" && argc == 4) {
+        if (std::wstring(argv[1]) == L"--fixture-install" && argc == 5) {
             std::filesystem::path root(argv[2]);
             if (!std::filesystem::is_regular_file(root / L"fixture-only")) throw std::runtime_error("missing fixture marker");
             UpdateInstall job(root, ascii(argv[3]));
             std::filesystem::copy_file(root / L"fixture.zip", job.package());
-            job.start();
+            job.start(ascii(argv[4]));
             auto until = std::chrono::steady_clock::now() + std::chrono::seconds(40);
             while (!job.readyToExit()) {
                 if (std::chrono::steady_clock::now() > until) throw std::runtime_error("helper timeout");
