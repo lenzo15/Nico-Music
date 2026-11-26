@@ -1,0 +1,40 @@
+"use strict";
+// Trusted SVG fragments. Window controls use a 20×20 viewBox; other glyphs use 24×24.
+const iconGlyphs = {
+  compass:
+    '<circle cx="12" cy="12" r="9"/><path d="m16 8-2.3 5.7L8 16l2.3-5.7Z"/>',
+  library: '<path d="M4 4v16M9 4v16m4-15 4-1 4 15-4 1z"/>',
+  heart:
+    '<path d="M20.7 5.9c-2.5-2.7-6.5-1.7-8.7 1-2.3-2.7-6.2-3.7-8.7-1C-.3 10.1 4.2 15 12 20.5c7.8-5.5 12.3-10.4 8.7-14.6Z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
+  external: '<path d="M7 17 18 6M7 6h11v11"/>',
+  record:
+    '<path d="M5 13a7 7 0 1 0 7-7" stroke-width="2.3"/><path d="M3.3 9A10 10 0 0 1 17 3.8"/><circle cx="12" cy="13" r="2.4"/>',
+  disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.3"/><path d="M6 12a6 6 0 0 1 6-6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
+  settings: '<circle cx="12" cy="12.5" r="3"/><path d="m10 3-.5 2.5-2.2 1.3-2.4-.8-2 3.5 1.9 1.7v2.6l-1.9 1.7 2 3.5 2.4-.8 2.2 1.3L10 22h4l.5-2.5 2.2-1.3 2.4.8 2-3.5-1.9-1.7v-2.6l1.9-1.7-2-3.5-2.4.8-2.2-1.3L14 3Z"/>',
+  share: '<path d="M12 15V3m-4 4 4-4 4 4M7 10H5v11h14V10h-2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  checklist: '<path d="m3 7 2 2 4-5m3 3h9M3 16l2 2 4-5m3 3h9"/>',
+  play: '<path d="m7 4 13 8-13 8z" fill="currentColor"/>',
+  pause: '<path d="M8 5v14m8-14v14" stroke-width="4"/>',
+  order: '<path d="M4 6h11M4 12h11M4 18h16m-4-4 4 4-4 4"/>',
+  repeat: '<path d="M4 10V8a2 2 0 0 1 2-2h14m-3-3 3 3-3 3M20 14v2a2 2 0 0 1-2 2H4m3 3-3-3 3-3"/>',
+  repeatOne: '<path d="M4 10V8a2 2 0 0 1 2-2h14m-3-3 3 3-3 3M20 14v2a2 2 0 0 1-2 2H4m3 3-3-3 3-3M11 11l2-1v5"/>',
+  prev: '<path d="M5 5v14" stroke-width="2.5"/><path d="m18 5-10 7 10 7z" fill="currentColor"/>',
+  next: '<path d="M19 5v14" stroke-width="2.5"/><path d="m6 5 10 7-10 7z" fill="currentColor"/>',
+  volume: '<path d="M4 9h4l5-4v14l-5-4H4zM16 9q3 3 0 6m3-9q5 6 0 12"/>',
+  silent: '<path d="M4 9h4l5-4v14l-5-4H4zm13 0 5 6m0-6-5 6"/>',
+  playQueue: '<path d="M3 6h16M3 12h10M3 18h8"/><path d="m16 12 6 4-6 4z" fill="currentColor"/>',
+  queue: '<path d="M4 6h16M4 12h12M4 18h9"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  trash: '<path d="M4 7h16M9 4h6M6 7l1 13h10l1-13M10 10v7m4-7v7"/>',
+  windowMinimize: '<path d="M4 10h12"/>',
+  windowMaximize: '<rect class="maximizeMark" x="4.5" y="4.5" width="11" height="11" rx="2"/><g class="restoreMark"><rect x="3.5" y="7" width="9" height="9" rx="1.6"/><path d="M7 5.3V5a1.5 1.5 0 0 1 1.5-1.5H15A1.5 1.5 0 0 1 16.5 5v6.5A1.5 1.5 0 0 1 15 13h-.5"/></g>',
+  windowClose: '<path d="m5 5 10 10M15 5 5 15"/>',
+  focusBack: '<path d="m14.5 5-7 7 7 7"/>',
+  presets: '<path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>',
+  selectedTick: '<path d="m5 12 4 4L19 6"/>',
+  grip: '<path d="M5 7h14M5 12h14M5 17h14"/>',
+};

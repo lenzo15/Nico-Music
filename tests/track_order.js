@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {createTrackOrder, moveVisibleTracks, reorderScrollSpeed} = require('../ui/track-order');
+const {createTrackOrder, moveVisibleTracks, reorderScrollSpeed} = require('../ui/scripts/track-order');
 
 test('drag edge scrolling is immediate, directional, bounded and faster near the edge', () => {
   assert.equal(reorderScrollSpeed(300, 100, 500), 0);

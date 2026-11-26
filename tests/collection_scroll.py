@@ -66,6 +66,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             return cdp('Runtime.evaluate', {'expression': expression, 'returnByValue': True})['result'].get('value')
 
         until(lambda: js('document.readyState === "complete"'))
+        assert js("""[...document.querySelectorAll('[data-icon]')].every(el =>
+          !!iconGlyphs[el.dataset.icon] && !!el.querySelector('path,rect,circle,g')) &&
+          !!$('windowMax').querySelector('.restoreMark') && !!$('focusBack').querySelector('svg path')""")
         assert js("$('sidebarStatus').textContent === '随心听好音乐' && $('sidebarStatusArea').dataset.playing === 'false'")
         js("""
           tracks = Array.from({length: 100}, (_, i) => ({url: `file:///test/${i}.wav`, name: `Track ${i}`}));

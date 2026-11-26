@@ -47,7 +47,7 @@ function createFocusView() {
       const b = document.createElement("button");
       b.type = "button"; b.tabIndex = -1; b.dataset.id = id; b.setAttribute("role", "menuitemradio");
       const label = document.createElement("span"); label.textContent = name; b.append(label);
-      b.insertAdjacentHTML("beforeend", '<svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>');
+      b.insertAdjacentHTML("beforeend", icon("selectedTick"));
       b.onclick = () => {
         hideMenu(true);
         if (selected === id) return;

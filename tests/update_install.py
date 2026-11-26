@@ -30,9 +30,9 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     exe = root/'NicoMusic.exe'
     exe.write_bytes(b'original player')
     (root/'fixture-only').touch()
-    for path in ('library.tsv', 'hotkeys.ini', 'plugins/custom/plugin.ini', 'ui/app.js'):
+    for path in ('library.tsv', 'hotkeys.ini', 'plugins/custom/plugin.ini', 'ui/scripts/app.js'):
         dest = root/path; dest.parent.mkdir(parents=True, exist_ok=True); dest.write_text('original')
-    files = {'ui/app.js': b'new UI', 'NicoMusic.exe': new_exe, 'NicoMusicCLI.exe': b'cli', 'libmpv-2.dll': b'dll', 'ui/index.html': b'index'}
+    files = {'ui/scripts/app.js': b'new UI', 'NicoMusic.exe': new_exe, 'NicoMusicCLI.exe': b'cli', 'libmpv-2.dll': b'dll', 'ui/index.html': b'index'}
     def package(extra=None):
         with zipfile.ZipFile(root/'fixture.zip', 'w', zipfile.ZIP_DEFLATED) as z:
             for name, data in {**files, **(extra or {})}.items(): z.writestr('NicoMusic/'+name, data)
@@ -54,14 +54,14 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     job = root/('.nicomusic-update-{' + str(uuid.uuid4()) + '}'); job.mkdir()
     import shutil
     shutil.copyfile(root/'fixture.zip', job/'package.zip')
-    script = Path(__file__).resolve().parents[1]/'src/install-update.ps1'
+    script = Path(__file__).resolve().parents[1]/'src/updates/install-update.ps1'
     (job/'install.ps1').write_text(script.read_text(encoding='utf-8'), encoding='utf-8-sig')
     parent = subprocess.Popen([sys.executable,'-c','import sys;sys.stdin.read()'],stdin=subprocess.PIPE)
     ps = Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
     p = subprocess.Popen([ps,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File', job/'install.ps1',str(parent.pid),hashlib.sha256((job/'package.zip').read_bytes()).hexdigest()])
     try:
         wait_for(lambda: (job/'ready').exists() or p.poll() is not None)
-        assert p.poll() is None and (root/'ui/app.js').read_text()=='original'
+        assert p.poll() is None and (root/'ui/scripts/app.js').read_text()=='original'
         (job/'apply').touch(); parent.communicate(timeout=3)
         user = ctypes.windll.user32
         @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_ssize_t)
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
             return True
         def finished(): user.EnumWindows(dismiss,0); return p.poll() is not None
         wait_for(finished)
-        assert p.returncode==1 and clean() and (root/'ui/app.js').read_text()=='original'
+        assert p.returncode==1 and clean() and (root/'ui/scripts/app.js').read_text()=='original'
         wait_for(lambda: (root/'relaunched').exists()); (root/'relaunched').unlink()
     finally:
         if parent.poll() is None: parent.kill(); parent.wait()

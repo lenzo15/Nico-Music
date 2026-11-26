@@ -1,6 +1,6 @@
 // Optional harness: configure with -DNICOMUSIC_UPDATE_TESTS=ON.
-#include "../src/updater.hpp"
-#include "../src/update_install.hpp"
+#include "../src/updates/updater.hpp"
+#include "../src/updates/update_install.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>

@@ -51,6 +51,16 @@ NicoMusic 仅用于学习、研究和个人使用。项目与第三方音源服�
 
 开发自己的插件：[音源插件协议](docs/source-plugins.md) · [本地文件解析示例](examples/plugins/local-link/) · [网页电台示例](examples/plugins/webradio/) · [专注预设协议](docs/focus-presets.md)
 
+## 目录导航
+
+| 目录 | 用途 |
+| --- | --- |
+| [src/](src/) | 原生代码：`desktop/` 桌面窗口与系统集成，`cli/` 命令行入口，`audio/` 播放与频谱，`library/` 音乐库与歌单，`plugins/` 插件宿主，`updates/` 更新流程。 |
+| [art/icons/windows/](art/icons/windows/) | 编入 EXE 的应用图标、`.nicomix` 文件图标及其 SVG 原稿。 |
+| [ui/](ui/) | 界面入口 `index.html`；交互代码在 `scripts/`，样式在 `styles/`。 |
+| [ui/art/icons/](ui/art/icons/) | 随 WebView 界面分发的图标：`glyphs.js` 集中存放 SVG 图形，独立使用的勾选图标为 `selection-check.svg`。 |
+| [plugins/](plugins/) | 独立安装、热重载的插件包；插件自己的脚本和样式保留在包内。 |
+
 ## 从源码运行
 
 在 Windows 10/11 x64 上，安装 Visual Studio 2022 的「使用 C++ 的桌面开发」、Windows SDK 10.0.20348 或更新版，以及 CMake 3.21+。在项目根目录执行：

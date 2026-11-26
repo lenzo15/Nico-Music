@@ -1,5 +1,5 @@
 // Native settings tests use a fake registry; they never steal desktop shortcuts.
-#include "../src/hotkeys.hpp"
+#include "../src/desktop/hotkeys.hpp"
 #include <fstream>
 #include <iostream>
 #include <map>

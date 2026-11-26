@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {createEditHistory, historyShortcut} = require('../ui/edit-history.js');
+const {createEditHistory, historyShortcut} = require('../ui/scripts/edit-history.js');
 const clone = value => JSON.parse(JSON.stringify(value));
 function fixture() {
   let state = {likes: ['a'], lists: [{id: 'one', name: 'One', urls: ['a', 'b']}]};

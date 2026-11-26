@@ -1049,7 +1049,7 @@ aside { min-height: 0; overflow-y: auto; }
 }
 :is(#batchBar, .row.pick, .choices) input[type="checkbox"]::before {
   content: ""; width: 16px; height: 16px; opacity: 0; transform: scale(.7);
-  background: url("art/selection-check.svg") center / contain no-repeat;
+  background: url("../art/icons/selection-check.svg") center / contain no-repeat;
   transition: opacity .12s ease, transform .16s ease-out;
 }
 :is(#batchBar, .row.pick, .choices) input:is(:checked, :indeterminate) {

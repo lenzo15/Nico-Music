@@ -1,5 +1,5 @@
-#include "station.hpp"
-#include "plugin_snapshot.hpp"
+#include "../library/station.hpp"
+#include "../plugins/plugin_snapshot.hpp"
 static string clockText(double t) {
     if (t < 0)
         return "--:--";

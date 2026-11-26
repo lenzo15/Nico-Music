@@ -141,7 +141,7 @@ function createReorderHandles(rows, {selected, visible, move}) {
       handle.type = 'button'; handle.className = 'icon reorderGrip'; handle.draggable = true;
       handle.title = '拖动排序，也可使用上下方向键';
       handle.setAttribute('aria-label', `调整「${title}」顺序，使用上下方向键移动`);
-      handle.innerHTML = '<svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>';
+      handle.innerHTML = icon("grip");
       handle.ondragstart = e => {
         reset();
         moving = group(url); e.dataTransfer.effectAllowed = 'move';

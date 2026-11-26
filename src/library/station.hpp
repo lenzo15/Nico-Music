@@ -1,6 +1,6 @@
 #pragma once
-#include "player.hpp"
-#include "sources.hpp"
+#include "../audio/player.hpp"
+#include "../plugins/sources.hpp"
 #include <shellapi.h>
 #include <algorithm>
 #include <charconv>

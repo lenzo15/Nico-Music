@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(SimpleHTTPRequestHandler, directory=tmp))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     host = f'http://127.0.0.1:{server.server_port}'
-    helper = (repo/'ui/collection-confirm.js').read_text(encoding='utf8')
+    helper = (repo/'ui/scripts/collection-confirm.js').read_text(encoding='utf8')
     (root/'bridge.js').write_text(helper.replace('https://${source}.collection.bilimusic.local', host+'/${source}'), encoding='utf8')
     plugin = (repo/'plugins/bilibili/confirm/index.html').read_text(encoding='utf8').replace('https://studio.bilimusic.local', host)
     for action in ('accept', 'cancel', 'escape'):

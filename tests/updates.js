@@ -3,7 +3,7 @@
 const {test} = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
-const source = fs.readFileSync(path.join(__dirname, "../ui/updates.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "../ui/scripts/updates.js"), "utf8");
 const prefix = "https://github.com/lenzo15/Nico-Music/releases/download/";
 const asset = {name: "NicoMusic-v2.0.0-windows-x64.zip", state: "uploaded", size: 1048576,
   browser_download_url: prefix + "v2.0.0/NicoMusic-v2.0.0-windows-x64.zip", digest: "sha256:" + "a".repeat(64)};

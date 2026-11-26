@@ -1,6 +1,6 @@
-#include "station.hpp"
-#include "library_history.hpp"
-#include "nicomix.hpp"
+#include "../library/station.hpp"
+#include "../library/library_history.hpp"
+#include "../library/nicomix.hpp"
 #include "nicomix_association.hpp"
 #include <ole2.h>
 #include <shellapi.h>
@@ -8,12 +8,12 @@
 #include <wrl.h>
 #include <WebView2.h>
 #include <windowsx.h>
-#include "audio_meter.hpp"
-#include "plugin_resources.hpp"
+#include "../audio/audio_meter.hpp"
+#include "../plugins/plugin_resources.hpp"
 #include <future>
 #include "startup_splash.hpp"
-#include "updater.hpp"
-#include "update_install.hpp"
+#include "../updates/updater.hpp"
+#include "../updates/update_install.hpp"
 #include "hotkeys.hpp"
 
 using Microsoft::WRL::Callback;

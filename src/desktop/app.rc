@@ -1,0 +1,3 @@
+101 ICON "../../art/icons/windows/app.ico"
+102 RCDATA "../updates/install-update.ps1"
+103 ICON "../../art/icons/windows/nicomix.ico"

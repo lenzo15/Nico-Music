@@ -8,27 +8,29 @@
       content="default-src 'self'; script-src 'self' https://*.focus.bilimusic.local; style-src 'self' 'unsafe-inline' https://*.focus.bilimusic.local; img-src 'self' https: http:; object-src 'none'; frame-src https://*.collection.bilimusic.local; base-uri 'none'"
     />
     <title>NicoMusic · 音乐空间</title>
-    <link rel="stylesheet" href="style.css" />
-    <script defer src="focus.js"></script>
-    <script defer src="playlists.js"></script>
-    <script defer src="track-order.js"></script>
-    <script defer src="window-bar.js"></script>
-    <script defer src="hotkey-bindings.js"></script>
-    <script defer src="shortcuts.js"></script>
-    <script defer src="settings.js"></script>
-    <script defer src="edit-history.js"></script>
-    <script defer src="updates.js"></script>
-    <script defer src="collection-confirm.js"></script>
-    <script defer src="app.js"></script>
+    <link rel="stylesheet" href="styles/style.css" />
+    <script defer src="art/icons/glyphs.js"></script>
+    <script defer src="scripts/icons.js"></script>
+    <script defer src="scripts/focus.js"></script>
+    <script defer src="scripts/playlists.js"></script>
+    <script defer src="scripts/track-order.js"></script>
+    <script defer src="scripts/window-bar.js"></script>
+    <script defer src="scripts/hotkey-bindings.js"></script>
+    <script defer src="scripts/shortcuts.js"></script>
+    <script defer src="scripts/settings.js"></script>
+    <script defer src="scripts/edit-history.js"></script>
+    <script defer src="scripts/updates.js"></script>
+    <script defer src="scripts/collection-confirm.js"></script>
+    <script defer src="scripts/app.js"></script>
   </head>
   <body>
     <div id="focusBackground" aria-hidden="true" hidden></div>
     <header class="windowBar" id="windowBar" aria-label="窗口标题栏">
       <div class="windowBrand"><span class="logo"><i data-icon="record"></i></span><b>NicoMusic</b></div>
       <div class="windowControls" role="group" aria-label="窗口控制">
-        <button type="button" data-window="minimize" title="最小化到托盘" aria-label="最小化到托盘"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg></button>
-        <button type="button" data-window="maximize" id="windowMax" title="最大化" aria-label="最大化"><svg viewBox="0 0 20 20" aria-hidden="true"><rect class="maximizeMark" x="4.5" y="4.5" width="11" height="11" rx="2"/><g class="restoreMark"><rect x="3.5" y="7" width="9" height="9" rx="1.6"/><path d="M7 5.3V5a1.5 1.5 0 0 1 1.5-1.5H15A1.5 1.5 0 0 1 16.5 5v6.5A1.5 1.5 0 0 1 15 13h-.5"/></g></svg></button>
-        <button type="button" data-window="close" title="关闭" aria-label="关闭"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+        <button type="button" data-window="minimize" title="最小化到托盘" aria-label="最小化到托盘"><svg viewBox="0 0 20 20" aria-hidden="true" data-icon="windowMinimize"></svg></button>
+        <button type="button" data-window="maximize" id="windowMax" title="最大化" aria-label="最大化"><svg viewBox="0 0 20 20" aria-hidden="true" data-icon="windowMaximize"></svg></button>
+        <button type="button" data-window="close" title="关闭" aria-label="关闭"><svg viewBox="0 0 20 20" aria-hidden="true" data-icon="windowClose"></svg></button>
       </div>
     </header>
     <div class="shell">
@@ -99,10 +101,10 @@
     <section id="focusView" tabindex="-1" aria-label="专注模式" hidden>
       <div class="focusTools" role="group" aria-label="专注模式工具">
         <button type="button" class="focusTool" id="focusBack" aria-label="返回列表" title="返回列表（Esc）">
-          <svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg>
+          <svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true" data-icon="focusBack"></svg>
         </button>
         <button type="button" class="focusTool" id="focusPresetTool" aria-label="切换专注模式预设" aria-haspopup="menu" aria-expanded="false" aria-controls="focusPresetMenu" hidden>
-          <svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>
+          <svg class="iconSvg" viewBox="0 0 24 24" aria-hidden="true" data-icon="presets"></svg>
         </button>
         <div id="focusPresetMenu" class="presetMenu" hidden>
           <div class="presetHeading" id="presetHeading">专注预设</div>

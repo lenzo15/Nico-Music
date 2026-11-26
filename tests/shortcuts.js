@@ -5,8 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const source = fs.readFileSync(path.join(__dirname, "../ui/hotkey-bindings.js"), "utf8") + "\n" +
-  fs.readFileSync(path.join(__dirname, "../ui/shortcuts.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "../ui/scripts/hotkey-bindings.js"), "utf8") + "\n" +
+  fs.readFileSync(path.join(__dirname, "../ui/scripts/shortcuts.js"), "utf8");
 
 function setup() {
   const actions = [], notices = [], volumeChanges = [], controls = {};

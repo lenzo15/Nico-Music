@@ -1,5 +1,5 @@
 // c++ -std=c++17 -O2 tests/focus_spectrum.cpp -o spectrum-test && ./spectrum-test
-#include "../src/focus_spectrum.hpp"
+#include "../src/audio/focus_spectrum.hpp"
 #include <cassert>
 #include <cstdio>
 
