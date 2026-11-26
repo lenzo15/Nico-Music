@@ -109,7 +109,22 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         play('mix0'); loaded(); mix=pixel(); play('mix1'); loaded(); assert pixel()==mix and mix not in samples, (mix,samples)
         play('broken'); until(lambda: js("!document.querySelector('.halo-art img') && !document.querySelector('.halo-ring[data-ink]')")); assert pixel()==(255,255,255)
         play('2'); loaded(); assert pixel()==samples[2]; play(''); assert pixel()==(255,255,255)
-        print('PASS: same-page switches, slow/stale cover, cache hits, whole-image average, missing/broken recovery, cross-origin contrast:',samples)
+        # Fractional SVG bounds while breathing used to expose the square paint surface.
+        # Check all four edges, with glow enabled, not just a pixel on the stroke.
+        js("""window.ring=root.querySelector('.halo-ring'); Object.assign(ring.style,{
+            position:'absolute',left:'20.25px',top:'12.75px',width:'164.5px',height:'164.5px'});
+            root.querySelector('.halo-glow').style.display='block';ring.style.strokeWidth='5';""")
+        for name,scale,bass in [('0',.997,False), ('2',1.002,True), ('',1.008,False)]:
+            play(name)
+            if name: loaded()
+            x,y,r,b=js(f"""ring.style.transform='scale({scale})';ring.toggleAttribute('data-bass',{json.dumps(bass)});
+              (()=>{{const r=ring.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom].map(Math.round)}})()""")
+            with Image.open(io.BytesIO(base64.b64decode(cdp('Page.captureScreenshot')['data']))) as shot:
+                im=shot.convert('RGB'); bg=im.getpixel((0,0))
+                for box in [(x-2,y-2,r+2,y+3),(x-2,b-3,r+2,b+2),(x-2,y,x+3,b),(r-3,y,r+2,b)]:
+                    assert im.crop(box).getextrema()==tuple((c,c) for c in bg), (name,scale,box)
+                assert im.getpixel(((x+r)//2,(y+b)//2))!=bg, 'stroke should still be visible'
+        print('PASS: clean square bounds during scale/bass changes; same-page switches, slow/stale cover, cache hits, whole-image average and cross-origin contrast:',samples)
     finally:
         gate.set()
         if ws: ws.close()

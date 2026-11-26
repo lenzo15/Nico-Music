@@ -18,7 +18,8 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
     <div class="halo-rim"></div><div class="halo-art"></div>
     <svg class="halo-ring" viewBox="-256 -256 512 512">
       <defs>
-        <mask id="halo-bars" maskUnits="userSpaceOnUse" x="-256" y="-256" width="512" height="512">
+        <!-- Keep the mask boundary outside the paint surface at fractional scales. -->
+        <mask id="halo-bars" maskUnits="userSpaceOnUse" x="-288" y="-288" width="576" height="576">
           <path stroke="white" fill="none"/>
         </mask>
         <filter id="halo-palette" color-interpolation-filters="sRGB">
@@ -29,8 +30,8 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
           <feColorMatrix values="-.62 .336 .034 1.48 -.42  .100 -.384 .034 1.48 -.42  .100 .336 -.686 1.48 -.42  0 0 0 0 1"/>
         </filter>
       </defs>
-      <g class="halo-glow"><g mask="url(#halo-bars)"><rect x="-256" y="-256" width="512" height="512" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g></g>
-      <g mask="url(#halo-bars)"><rect x="-256" y="-256" width="512" height="512" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g>
+      <g class="halo-glow"><g mask="url(#halo-bars)"><circle r="250" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g></g>
+      <g mask="url(#halo-bars)"><circle r="250" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g>
     </svg>
   </div>
   <div class="halo-caption"><h2 id="haloTitle"></h2></div>`;
