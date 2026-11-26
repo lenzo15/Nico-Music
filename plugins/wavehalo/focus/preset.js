@@ -4,7 +4,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   // [label, default, min, max, unit]. Settings belong only to this preset.
   const fields = {
     bass: ["低频振幅", 34, 0, 80, ""], mid: ["中频振幅", 27, 0, 80, ""], high: ["高频振幅", 46, 0, 80, ""],
-    width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
+    ring: ["整圈响应", 65, 0, 100, "%"], width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
     attack: ["上升时间", 32, 0, 250, " ms"], release: ["回落时间", 180, 0, 500, " ms"],
   };
   const storageKey = "wavehalo.tuning.v1";
@@ -62,9 +62,17 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     for (const bin of bins) {
       const lobe = (center, width) => Math.exp(-(Math.sin(bin.angle - center) ** 2) / (width * (tuning.width / 100) ** 2));
       const ripple = .55 + .45 * Math.cos(7 * bin.angle) ** 2;
-      bin.bass = tuning.bass * ripple * lobe(1.32, .075);
-      bin.mid = tuning.mid * ripple * lobe(.28, .036);
-      bin.high = tuning.high * ripple * lobe(-.58, .009);
+      // The host supplies three levels, not 128 FFT bins. Crossfade them around
+      // the whole circle, then lay the narrow accents on top without raising their ceiling.
+      const weight = (phase, peak) => {
+        const blend = (1 + Math.cos(2 * bin.angle - phase)) / 2;
+        const bed = tuning.ring / 100 * (.22 + .38 * blend * blend);
+        const accent = ripple * peak;
+        return bed + (1 - bed) * accent;
+      };
+      bin.bass = tuning.bass * weight(0, lobe(1.32, .075));
+      bin.mid = tuning.mid * weight(2 * Math.PI / 3, lobe(.28, .036));
+      bin.high = tuning.high * weight(4 * Math.PI / 3, lobe(-.58, .009));
     }
   }
   updateWeights();
