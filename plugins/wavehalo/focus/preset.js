@@ -1,22 +1,13 @@
 "use strict";
 
-document.currentScript.mountFocus = ({root, background, renderCover, requestLevels, reduceMotion, signal}) => {
-  // [label, default, min, max, unit]. Settings belong only to this preset.
-  const fields = {
-    bass: ["低频振幅", 34, 0, 80, ""], mid: ["中频振幅", 27, 0, 80, ""], high: ["高频振幅", 46, 0, 80, ""],
-    colorAt: ["低音提亮阈值", 72, 10, 100, "%"], brightenMs: ["提亮时间", 150, 0, 1000, " ms"],
-    ring: ["整圈响应", 65, 0, 100, "%"], width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
-    attack: ["上升时间", 12, 0, 250, " ms"], release: ["回落时间", 85, 0, 500, " ms"],
+document.currentScript.mountFocus = ({root, background, renderCover, requestLevels, reduceMotion}) => {
+  // 插件参数：修改后保存即可热重载。
+  const tuning = {
+    bass: 34, mid: 27, high: 46,         // 低、中、高频振幅
+    ring: 65, width: 100, inward: 100,   // 峰间响应、尖峰宽度、向内延伸（%）
+    attack: 12, release: 85,             // 光条上升 / 回落时间（ms）
+    colorAt: 72, brightenMs: 150,        // 低音提亮阈值（%）、提亮时间（ms）
   };
-  const storageKey = "wavehalo.tuning.v1";
-  const defaults = Object.fromEntries(Object.entries(fields).map(([k, [, value]]) => [k, value]));
-  const tuning = {...defaults};
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
-    for (const [k, [,,min,max]] of Object.entries(fields)) {
-      if (Number.isInteger(saved?.[k])) tuning[k] = Math.max(min, Math.min(max, saved[k]));
-    }
-  } catch {} // Storage can be unavailable; live tuning still works.
 
   const wash = document.createElement("div");
   wash.className = "halo-wash";
@@ -24,44 +15,16 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   root.innerHTML = `<div class="halo-stage" aria-hidden="true">
     <div class="halo-rim"></div><div class="halo-art"></div>
     <svg class="halo-ring" viewBox="-256 -256 512 512"><path/></svg>
-  </div><details class="halo-tuner"><summary role="button" title="调节声谱参数" aria-label="调节声谱参数">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7h8m5 0h5M3 17h3m5 0h10"/><circle cx="13.5" cy="7" r="2.5"/><circle cx="8.5" cy="17" r="2.5"/></svg>
-  </summary><div class="halo-controls"><strong>声谱参数</strong>${Object.entries(fields).map(([k,[label,,min,max,unit]]) =>
-    `<label>${label}<span aria-hidden="true"><b data-value="${k}"></b>${unit}</span><input type="range" data-key="${k}" min="${min}" max="${max}"></label>`).join("")}
-    <button type="button">恢复默认</button></div></details>`;
+  </div>`;
   const art = root.querySelector(".halo-art"), path = root.querySelector(".halo-ring path");
   const ring = root.querySelector(".halo-ring");
+  ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
   let accented = false;
   function updateColor(bass) {
     // Absolute meter level with a dead band, independent of bar gain and smoothing.
     const next = bass >= (tuning.colorAt - (accented ? 8 : 0)) / 100;
     if (next !== accented) { accented = next; ring.toggleAttribute("data-bass", next); }
   }
-  const panel = root.querySelector(".halo-tuner");
-  const sliders = [...panel.querySelectorAll("input")];
-  function syncControls() {
-    ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
-    for (const input of sliders) {
-      const k = input.dataset.key;
-      input.value = tuning[k];
-      input.setAttribute("aria-valuetext", tuning[k] + fields[k][4]);
-      panel.querySelector(`[data-value="${k}"]`).textContent = tuning[k];
-    }
-  }
-  syncControls();
-  function apply() {
-    mapSpectrum(); draw(); updateColor(bassLevel); syncControls();
-    try { localStorage.setItem(storageKey, JSON.stringify(tuning)); } catch {}
-  }
-  panel.oninput = ({target}) => { tuning[target.dataset.key] = target.valueAsNumber; apply(); };
-  panel.querySelector("button").onclick = () => { Object.assign(tuning, defaults); apply(); };
-  document.addEventListener("pointerdown", e => { if (panel.open && !panel.contains(e.target)) panel.open = false; }, {signal});
-  document.addEventListener("keydown", e => {
-    if (panel.open && e.key === "Escape") {
-      panel.open = false; panel.querySelector("summary").focus(); e.preventDefault(); e.stopPropagation();
-    }
-  }, {capture: true, signal});
-
   // One fixed frequency axis, starting at the upper right. Different notes
   // occupy different spokes; no mirrored lobes, synthetic beats or random motion.
   const count = 128, radius = 160;
