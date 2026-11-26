@@ -1,6 +1,6 @@
 "use strict";
 // The plugin owns the contents and buttons. Its sandbox can only return one decision.
-function confirmPluginCollection({source, count, play}, destination) {
+function confirmPluginCollection({source, count, play, revision}, destination) {
   if (!/^[a-z0-9-]{1,64}$/.test(source)) return Promise.reject(new Error("音源标识无效"));
   return new Promise((resolve, reject) => {
     const dialog = document.createElement("dialog");
@@ -31,9 +31,10 @@ function confirmPluginCollection({source, count, play}, destination) {
       }
     }
     dialog.oncancel = (e) => { e.preventDefault(); finish(false); };
+    dialog.onclose = () => finish(false);
     dialog.onclick = (e) => { if (e.target === dialog) finish(false); };
     window.addEventListener("message", receive);
-    frame.src = `https://${source}.collection.bilimusic.local/index.html`;
+    frame.src = `https://${source}.collection.bilimusic.local/index.html` + (revision ? "?v=" + encodeURIComponent(revision) : "");
     dialog.append(frame);
     document.body.append(dialog);
     dialog.showModal();

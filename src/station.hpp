@@ -138,6 +138,27 @@ class Station
 
 public:
     const SourceRegistry &providers() const { return sources; }
+    // mpv loads Lua hooks at initialization. Swap the complete registry and retire
+    // the old engine (including outstanding metadata/collection callbacks).
+    void reloadSources(SourceRegistry next, bool rescanMetadata = true) {
+        int index = active();
+        auto order = playbackQueue();
+        const bool paused = player && player->str("pause") == "yes";
+        const double position = index >= 0 ? player->seconds("time-pos") : -1;
+        const auto volume = player ? player->integer("volume", 70) : 70;
+        const bool hadEngine = bool(player);
+        player.reset(); queueValid = false; queue.clear(); metadataQueue.clear();
+        sources = std::move(next);
+        if (!hadEngine) { if (rescanMetadata) queueMissingCovers(); return; }
+        queueMissingCovers();
+        auto& p = engine();
+        p.command({"set", "volume", std::to_string(volume).c_str()});
+        if (index >= 0 && !sources.route(tracks[index].url).empty()) {
+            playSelection(index, order, wholeLibrary);
+            if (paused) p.command({"set", "pause", "yes"});
+            p.resumeAfterLoad(sources.route(tracks[index].url), position);
+        }
+    }
     int count() const { return static_cast<int>(tracks.size()); }
     Player &engine()
     {

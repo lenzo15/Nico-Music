@@ -131,6 +131,10 @@ std::string Player::poll(std::vector<Metadata>& updates) {
             }
         }
         if (ev->event_id == MPV_EVENT_FILE_LOADED) {
+            if (resumeTime > 0 && str("path") == resumePath && str("seekable") == "yes") {
+                try { command({"seek", std::to_string(resumeTime).c_str(), "absolute"}); } catch (const std::exception&) {}
+            }
+            resumeTime = -1;
             auto title = str("force-media-title");
             if (title.empty()) title = str("metadata/by-key/title");
             if (!title.empty()) updates.push_back({SourceRegistry::original(str("path")), title, std::nullopt});

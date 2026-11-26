@@ -4,8 +4,9 @@ function createFocusView() {
   const panel = $("focusView"), shell = document.querySelector(".shell"), trigger = $("cover");
   const root = $("focusContent"), background = $("focusBackground"), picker = $("focusPreset");
   const menu = $("focusPresetMenu"), tool = $("focusPresetTool");
-  let selected = "";
+  let selected = "", preferred;
   const factories = new Map();
+  let revisions = new Map();
   function hideMenu(restore = false) {
     menu.hidden = true; tool.setAttribute("aria-expanded", "false");
     if (restore) tool.focus();
@@ -35,6 +36,10 @@ function createFocusView() {
   function discover(presets) {
     const key = JSON.stringify(presets);
     if (catalogue === key) return;
+    const previous = selected, oldRevision = revisions.get(selected);
+    const next = new Map(presets.map(p => [p.id, p.revision || ""]));
+    for (const id of factories.keys()) if (revisions.get(id) !== next.get(id)) factories.delete(id);
+    revisions = next;
     catalogue = key;
     hideMenu();
     picker.replaceChildren();
@@ -46,18 +51,20 @@ function createFocusView() {
       b.onclick = () => {
         hideMenu(true);
         if (selected === id) return;
-        selected = id;
+        preferred = selected = id;
         try { localStorage.setItem("focusPreset", id); } catch {}
         mount();
       };
       picker.append(b);
     }
-    let id = presets[0]?.id || "";
-    try { id = localStorage.getItem("focusPreset") ?? id; } catch {}
-    selected = presets.some(p => p.id === id) ? id : "";
+    if (preferred === undefined) {
+      try { preferred = localStorage.getItem("focusPreset") ?? undefined; } catch {}
+      preferred ??= presets[0]?.id;
+    }
+    selected = revisions.has(preferred) ? preferred : "";
     tool.hidden = !presets.length;
     labelPicker();
-    if (!panel.hidden) mount();
+    if (!panel.hidden && (selected !== previous || revisions.get(selected) !== oldRevision)) mount();
   }
   function stop() {
     ++generation;
@@ -98,12 +105,13 @@ function createFocusView() {
     const id = selected, token = generation;
     if (!id) return;
     const base = `https://${id}.focus.bilimusic.local/`;
+    const version = revisions.get(id) ? "?v=" + encodeURIComponent(revisions.get(id)) : "";
     try {
       sheet = document.createElement("link"); sheet.rel = "stylesheet"; sheet.media = "not all";
-      const css = asset(sheet, base + "style.css");
+      const css = asset(sheet, base + "style.css" + version);
       if (!factories.has(id)) {
         const script = document.createElement("script");
-        factories.set(id, asset(script, base + "preset.js").then(() => {
+        factories.set(id, asset(script, base + "preset.js" + version).then(() => {
           if (typeof script.mountFocus !== "function") throw new Error("missing mountFocus");
           return script.mountFocus;
         }).finally(() => script.remove()));

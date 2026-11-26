@@ -1,4 +1,5 @@
 #include "station.hpp"
+#include "plugin_snapshot.hpp"
 static string clockText(double t) {
     if (t < 0)
         return "--:--";
@@ -192,11 +193,17 @@ int main() {
     int code = 0;
     try {
         Terminal station;
+        auto stamps = PluginSnapshot(appDir() / L"plugins", false).sourceFiles;
         cout << "● NicoMusic  /  音乐播放器\n";
         Terminal::help();
         string line;
         while (cout << "\nNicoMusic > " << std::flush, readLine(line)) {
             try {
+                PluginSnapshot plugins(appDir() / L"plugins", false);
+                if (stamps != plugins.sourceFiles) {
+                    stamps = std::move(plugins.sourceFiles);
+                    station.reloadSources(std::move(plugins.sources));
+                }
                 if (!station.dispatch(line))
                     break;
             } catch (const std::exception &e) {

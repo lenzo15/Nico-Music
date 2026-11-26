@@ -7,7 +7,8 @@
 #include <WebView2.h>
 #include <windowsx.h>
 #include "audio_meter.hpp"
-#include "focus_presets.hpp"
+#include "plugin_resources.hpp"
+#include <future>
 #include "startup_splash.hpp"
 #include "updater.hpp"
 #include "update_install.hpp"
@@ -145,6 +146,12 @@ void trayMenu(HWND h, POINT point) {
 }
 
 std::vector<FocusPreset> focusPresets;
+PluginStamps appliedSources, appliedFocus;
+std::map<string,string> focusVersions;
+string sourceVersion;
+std::future<PluginSnapshot> pluginScan;
+std::optional<PluginSnapshot> pendingPlugins;
+HANDLE pluginWatch = INVALID_HANDLE_VALUE;
 std::unique_ptr<AudioMeter> meter;
 void stopMeter() {
     KillTimer(window, 2);
@@ -324,7 +331,8 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
         for (size_t n = 0; n < focusPresets.size(); ++n) {
             if (n) data += ',';
             const auto& preset = focusPresets[n];
-            data += "{\"id\":" + quotedJson(preset.id) + ",\"name\":" + quotedJson(preset.name) + "}";
+            data += "{\"id\":" + quotedJson(preset.id) + ",\"name\":" + quotedJson(preset.name) +
+                ",\"revision\":" + quotedJson(focusVersions.at(preset.id)) + "}";
         }
         data += "],\"sources\":[";
         bool firstSource = true;
@@ -362,7 +370,7 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
         data += ",\"error\":" + quotedJson(err);
     if (!collectionMode.empty()) data += ",\"collectionPending\":true";
     if (showPreview) data += ",\"collectionPreview\":{\"id\":" + quotedJson(std::to_string(collectionId)) +
-        ",\"source\":" + quotedJson(collectionSource) + ",\"count\":" + std::to_string(collectionPreview.size()) +
+        ",\"source\":" + quotedJson(collectionSource) + ",\"revision\":" + quotedJson(sourceVersion) + ",\"count\":" + std::to_string(collectionPreview.size()) +
         ",\"play\":" + (collectionMode == "start" ? "true}" : "false}");
     if (importFailed) data += ",\"importFailed\":true";
     if (!importedTracks.empty()) {
@@ -634,6 +642,63 @@ void failure(LPCWSTR reason) {
     MessageBoxW(window, reason, L"NicoMusic", MB_OK | MB_ICONERROR);
     PostMessageW(window, WM_CLOSE, 0, 0);
 }
+void applyPlugins(PluginSnapshot snapshot, bool initial) {
+    // Unique asset URLs even across desktop restarts and remove/reinstall cycles.
+    static auto serial = std::chrono::system_clock::now().time_since_epoch().count();
+    const auto version = std::to_string(++serial);
+    const bool sourcesChanged = snapshot.sourceFiles != appliedSources;
+    string error;
+    bool cancelled = false;
+    if (sourcesChanged || initial) {
+        cancelled = !collectionMode.empty();
+        collectionMode.clear(); collectionPreview.clear(); ++collectionId;
+        try { station->reloadSources(std::move(snapshot.sources), !initial); }
+        catch (const std::exception& e) { error = e.what(); }
+        appliedSources = std::move(snapshot.sourceFiles); sourceVersion = version;
+        if (cancelled) error = "来源插件已更新，请重新导入合集";
+    }
+    for (auto it = focusVersions.begin(); it != focusVersions.end();) {
+        if (snapshot.focusFiles.count(it->first)) { ++it; continue; }
+        it = focusVersions.erase(it);
+    }
+    focusPresets.clear();
+    for (auto& p : snapshot.presets) {
+        if (!focusVersions.count(p.id) || appliedFocus.at(p.id) != snapshot.focusFiles.at(p.id)) focusVersions[p.id] = version;
+        focusPresets.push_back(std::move(p));
+    }
+    appliedFocus = std::move(snapshot.focusFiles);
+    if (!initial) publish(true, error, {}, false, cancelled);
+}
+void pollPlugins() {
+    try {
+        bool retry = false;
+        if (pluginScan.valid()) {
+            if (pluginScan.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+            auto scan = pluginScan.get();
+            if (scan.sourceFiles == appliedSources && scan.focusFiles == appliedFocus) pendingPlugins.reset();
+            else if (pendingPlugins && scan.sourceFiles == pendingPlugins->sourceFiles && scan.focusFiles == pendingPlugins->focusFiles) {
+                pendingPlugins.reset();
+                applyPlugins(std::move(scan), false);
+            } else { pendingPlugins = std::move(scan); retry = true; }
+        }
+        const auto root = appDir() / L"plugins";
+        if (pluginWatch != INVALID_HANDLE_VALUE && WaitForSingleObject(pluginWatch, 0) != WAIT_TIMEOUT) {
+            retry = true;
+            if (!FindNextChangeNotification(pluginWatch)) {
+                FindCloseChangeNotification(pluginWatch); pluginWatch = INVALID_HANDLE_VALUE;
+            }
+        }
+        // Rebind occasionally in case the watched root itself was renamed/replaced.
+        static ULONGLONG lastBind = 0;
+        if (pluginWatch == INVALID_HANDLE_VALUE || GetTickCount64() - lastBind > 15000) {
+            if (pluginWatch != INVALID_HANDLE_VALUE) FindCloseChangeNotification(pluginWatch);
+            pluginWatch = FindFirstChangeNotificationW(root.c_str(), TRUE, FILE_NOTIFY_CHANGE_DIR_NAME |
+                FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE);
+            lastBind = GetTickCount64(); retry = true;
+        }
+        if (retry || pendingPlugins) pluginScan = std::async(std::launch::async, [root] { return PluginSnapshot(root); });
+    } catch (const std::exception&) { pendingPlugins.reset(); } // Copy/rename in progress: retry next tick.
+}
 HRESULT setup(ICoreWebView2Controller *c) {
     controller = c;
     // Do not let the empty browser surface cover the native launch animation.
@@ -654,17 +719,38 @@ HRESULT setup(ICoreWebView2Controller *c) {
                                               COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
     if (FAILED(hr))
         return hr;
-    for (const auto& source : station->providers().all()) {
-        if (source.collectionPaths.empty()) continue;
-        auto host = wide(source.id + ".collection.bilimusic.local");
-        v3->SetVirtualHostNameToFolderMapping(host.c_str(), (source.folder / L"confirm").c_str(),
-                                              COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+    ComPtr<ICoreWebView2Environment> env;
+    if (FAILED(v3->get_Environment(&env))) return E_FAIL;
+    ComPtr<ICoreWebView2_22> v22;
+    view.As(&v22);
+    for (auto pattern : {L"https://*.focus.bilimusic.local/*", L"https://*.collection.bilimusic.local/*"}) {
+        hr = v22 ? v22->AddWebResourceRequestedFilterWithRequestSourceKinds(pattern, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+                    COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL) :
+                    view->AddWebResourceRequestedFilter(pattern, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+        if (FAILED(hr)) return hr;
     }
-    for (const auto& preset : findFocusPresets(appDir() / L"plugins")) {
-        auto host = wide(preset.id + ".focus.bilimusic.local");
-        if (SUCCEEDED(v3->SetVirtualHostNameToFolderMapping(host.c_str(), preset.folder.c_str(),
-                      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) focusPresets.push_back(preset);
-    }
+    EventRegistrationToken resourceToken{};
+    hr = view->add_WebResourceRequested(Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+        [env](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            LPWSTR raw{};
+            if (FAILED(args->get_Request(&request)) || FAILED(request->get_Uri(&raw))) return E_FAIL;
+            std::wstring url(raw); CoTaskMemFree(raw);
+            ComPtr<IStream> stream;
+            std::wstring headers = L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+            try {
+                auto path = pluginResource(url, appliedFocus, appliedSources, appDir() / L"plugins");
+                if (!path.empty() && SUCCEEDED(SHCreateStreamOnFileEx(path.c_str(), STGM_READ | STGM_SHARE_DENY_NONE,
+                        FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream))) headers += std::wstring(L"\r\nContent-Type: ") + pluginMime(path);
+            } catch (const std::exception&) {} // Reject malformed or disappearing assets locally.
+            ComPtr<ICoreWebView2WebResourceResponse> response;
+            auto result = env->CreateWebResourceResponse(stream.Get(), stream ? 200 : 404, stream ? L"OK" : L"Not Found", headers.c_str(), &response);
+            return FAILED(result) ? result : args->put_Response(response.Get());
+        }).Get(), &resourceToken);
+    if (FAILED(hr)) return hr;
+    try { applyPlugins(PluginSnapshot(appDir() / L"plugins"), true); }
+    catch (const std::filesystem::filesystem_error&) { /* Retry after an in-progress install. */ }
+    SetTimer(window, 5, 750, nullptr);
     ComPtr<ICoreWebView2Settings> settings;
     if (SUCCEEDED(view->get_Settings(&settings))) {
         settings->put_AreDefaultContextMenusEnabled(FALSE);
@@ -812,6 +898,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_TIMER:
         if (w == 1) { publish(false); publishUpdates(); }
         else if (w == 2) meterTick();
+        else if (w == 5) pollPlugins();
         else if (w == trayRetryTimer) ensureTrayIcon(h);
         else if (w == StartupSplash::timer) splash.tick(h);
         return 0;
@@ -875,6 +962,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         ready = false;
         removeTrayIcon(h);
         KillTimer(h, 1);
+        KillTimer(h, 5);
+        if (pluginWatch != INVALID_HANDLE_VALUE) { FindCloseChangeNotification(pluginWatch); pluginWatch = INVALID_HANDLE_VALUE; }
         stopMeter();
         if (controller)
             controller->Close();

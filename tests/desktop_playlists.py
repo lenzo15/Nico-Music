@@ -45,7 +45,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
 exe = Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     root = Path(tmp)
-    minimal = '--minimal' in sys.argv or '--broken-preset' in sys.argv
+    minimal = any(flag in sys.argv for flag in ('--minimal', '--broken-preset', '--hot-plugins'))
     if minimal:
         app = root / 'standalone'
         app.mkdir()
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             else:
                 w.writeframes(bytes(16000 * (2 if name == 'A' else 24)))
     (profile / 'library.tsv').write_text(''.join(
-        f'http://127.0.0.1:{server.server_port}/{n}.wav\t{n}\t\n' for n in 'CBA'), encoding='utf8')
+        (media.joinpath(n+'.wav').as_uri() if '--hot-plugins' in sys.argv else f'http://127.0.0.1:{server.server_port}/{n}.wav') + f'\t{n}\t\n' for n in 'CBA'), encoding='utf8')
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
@@ -102,6 +102,10 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         def js(expr):
             return cdp('Runtime.evaluate', {'expression': expr, 'returnByValue': True})['result'].get('value')
         until(lambda: js('document.querySelectorAll(".row").length===3'))
+        if '--hot-plugins' in sys.argv:
+            from hot_plugins import exercise
+            exercise(app, root, profile, js, until)
+            sys.exit(0)
         # Persisted import order C,B,A is displayed newest first, without changing native IDs.
         assert js("[...document.querySelectorAll('.row strong')].map(n => n.textContent).join(',') === 'A,B,C'")
         # state.volume comes from mpv: verify the engine follows each input

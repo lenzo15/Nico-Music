@@ -783,6 +783,7 @@ bridge?.addEventListener("message", (e) => {
       catch { toast("歌单更新失败"); }
     }
   }
+  if (msg.importFailed) document.querySelector("dialog.pluginConfirm[open]")?.close();
   if (msg.collectionPreview) reviewCollection(msg.collectionPreview);
   if (msg.collectionPending && pendingImport) pendingImport.collection = true;
   $("importStatus").hidden = !(pendingImport?.collection && !msg.imported && !msg.importFailed);

@@ -18,6 +18,8 @@ class Player {
     decltype(&mpv_terminate_destroy) destroy{};
     decltype(&mpv_set_option_string) option{};
     decltype(&mpv_command) run{};
+    std::string resumePath;
+    double resumeTime = -1;
     uint64_t nextRequest = 1;
     std::string pendingToken, pendingUrl;
     std::chrono::steady_clock::time_point deadline;
@@ -44,6 +46,7 @@ public:
         std::string url, title;
         std::optional<std::string> thumbnail; // absent for title-only playback events
     };
+    void resumeAfterLoad(std::string path, double seconds) { resumePath = std::move(path); resumeTime = seconds; }
     void requestMetadata(const std::string& url, const std::string& target);
     void requestCollection(const std::string& target);
     std::optional<std::string> takeCollection();
