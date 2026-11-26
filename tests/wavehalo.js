@@ -6,8 +6,9 @@ const document = { currentScript: {}, createElement: () => ({}), addEventListene
 const saved = new Map();
 const localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k,v) => saved.set(k,v) };
 let now = 0, nextFrame, path, bassColor = false;
-const ring = {toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
-const sliders = ['bass','mid','high','colorAt','ring','width','inward','attack','release'].map(key => ({dataset:{key}, setAttribute(){}}));
+const ringStyle = new Map();
+const ring = {style: {setProperty: (k,v) => ringStyle.set(k,v)}, toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
+const sliders = ['bass','mid','high','colorAt','brightenMs','ring','width','inward','attack','release'].map(key => ({dataset:{key}, setAttribute(){}}));
 const reset = {}, panel = {querySelectorAll: () => sliders, querySelector: s => s === 'button' ? reset : {}};
 const root = {querySelector: s => s === '.halo-tuner' ? panel : s === '.halo-ring' ? ring : {setAttribute: (_, value) => { path = value; }}};
 vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/preset.js'), 'utf8'), {
@@ -18,6 +19,9 @@ const mount = () => document.currentScript.mountFocus({root, background: {append
   renderCover() {}, requestLevels() {}, reduceMotion: {matches: false} });
 const preset = mount();
 function tune(key, valueAsNumber) { panel.oninput({target: {dataset: {key}, valueAsNumber}}); }
+const brightenTime = () => ringStyle.get('--halo-brighten-time');
+assert.equal(brightenTime(), '150ms'); tune('brightenMs', 0); assert.equal(brightenTime(), '0ms');
+tune('brightenMs', 425); assert.equal(brightenTime(), '425ms');
 const rest = path;
 preset.update({playing: true});
 function frame() { now += 16; const fn = nextFrame; nextFrame = undefined; fn?.(now); }
@@ -57,5 +61,7 @@ tune('bass', 0); assert.equal(path, rest);
 tune('bass', 80); tune('inward', 0); assert(Math.max(...bars()) < .01 && path !== rest);
 packet([0,0,0]); assert.equal(path, rest);
 preset.dispose(); assert(!nextFrame);
-const again = mount(); assert.equal(sliders[0].value, 80); reset.onclick(); assert.equal(sliders[0].value, 34); again.dispose();
+ringStyle.clear();
+const again = mount(); assert.equal(sliders[0].value, 80); assert.equal(brightenTime(), '425ms');
+reset.onclick(); assert.equal(sliders[0].value, 34); assert.equal(brightenTime(), '150ms'); again.dispose();
 console.log('PASS: sustained absolute levels, linear gain, live shape/response controls, persistence and reset');

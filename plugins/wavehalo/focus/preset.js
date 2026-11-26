@@ -4,7 +4,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   // [label, default, min, max, unit]. Settings belong only to this preset.
   const fields = {
     bass: ["低频振幅", 34, 0, 80, ""], mid: ["中频振幅", 27, 0, 80, ""], high: ["高频振幅", 46, 0, 80, ""],
-    colorAt: ["低音变色阈值", 72, 10, 100, "%"],
+    colorAt: ["低音提亮阈值", 72, 10, 100, "%"], brightenMs: ["提亮时间", 150, 0, 1000, " ms"],
     ring: ["整圈响应", 65, 0, 100, "%"], width: ["尖峰宽度", 100, 10, 180, "%"], inward: ["向内延伸", 100, 0, 150, "%"],
     attack: ["上升时间", 32, 0, 250, " ms"], release: ["回落时间", 180, 0, 500, " ms"],
   };
@@ -40,6 +40,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   const panel = root.querySelector(".halo-tuner");
   const sliders = [...panel.querySelectorAll("input")];
   function syncControls() {
+    ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
     for (const input of sliders) {
       const k = input.dataset.key;
       input.value = tuning[k];
