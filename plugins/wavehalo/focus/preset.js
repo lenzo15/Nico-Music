@@ -18,19 +18,19 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
     <div class="halo-rim"></div><div class="halo-art"></div>
     <svg class="halo-ring" viewBox="-256 -256 512 512">
       <defs>
-        <!-- Derive ink from a tiny thumbnail inside the renderer. Remote artwork
-             does not need to grant JS access to pixels through CORS. -->
+        <mask id="halo-bars" maskUnits="userSpaceOnUse" x="-256" y="-256" width="512" height="512">
+          <path stroke="white" fill="none"/>
+        </mask>
         <filter id="halo-palette" color-interpolation-filters="sRGB">
-          <feGaussianBlur stdDeviation="1.5" edgeMode="duplicate"/>
           <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  .213 .715 .072 0 0"/>
           <feComponentTransfer><feFuncA type="discrete" tableValues="1 .5"/></feComponentTransfer>
-          <feColorMatrix values="-.42 0 0 1.22 -.17  0 -.42 0 1.22 -.17  0 0 -.42 1.22 -.17  0 0 0 0 1"/>
+          <!-- Each output channel = .47 * overall luma - .72 * source channel
+               + a light/dark offset. Complementary chroma, not a list of swatches. -->
+          <feColorMatrix values="-.62 .336 .034 1.48 -.42  .100 -.384 .034 1.48 -.42  .100 .336 -.686 1.48 -.42  0 0 0 0 1"/>
         </filter>
-        <pattern id="halo-ink" width="4" height="4" patternUnits="userSpaceOnUse">
-          <image width="4" height="4" preserveAspectRatio="none" filter="url(#halo-palette)"/>
-        </pattern>
       </defs>
-      <use class="halo-glow" href="#halo-bars"/><path id="halo-bars"/>
+      <g class="halo-glow"><g mask="url(#halo-bars)"><rect x="-256" y="-256" width="512" height="512" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g></g>
+      <g mask="url(#halo-bars)"><rect x="-256" y="-256" width="512" height="512" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g>
     </svg>
   </div>
   <div class="halo-caption"><h2 id="haloTitle"></h2></div>`;
@@ -41,19 +41,34 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
   ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
   ring.style.setProperty("--halo-fade-in", `${tuning.fadeInMs}ms`);
   ring.style.setProperty("--halo-fade-out", `${tuning.fadeOutMs}ms`);
-  let ink = ring.querySelector("image"), coverSrc = "";
+  let observed = null, pending;
   function syncInk() {
-    const src = art.dataset.cover || "";
-    if (src === coverSrc) return;
-    coverSrc = src;
-    ring.removeAttribute("data-ink");
-    // A late load from the last track must not recolor its successor.
-    const next = ink.cloneNode(false);
-    next.removeAttribute("href");
-    ink.replaceWith(next); ink = next;
-    if (!src) return;
-    next.onload = () => { if (ink === next) ring.setAttribute("data-ink", ""); };
-    next.setAttribute("href", src);
+    const img = art.querySelector("img");
+    if (img === observed) return;
+    pending?.abort(); observed = img;
+    if (!img) { ring.removeAttribute("data-ink"); return; }
+    pending = new AbortController();
+    const failed = () => { if (observed === img) ring.removeAttribute("data-ink"); };
+    const apply = () => {
+      if (observed !== img) return;
+      if (!img.naturalWidth) return failed();
+      // Average the entire decoded cover by successively halving a 64px thumbnail.
+      // Drawing cross-origin pixels is allowed; never read or export the canvas.
+      let from = img;
+      for (let size = 64; size >= 1; size /= 2) {
+        const tile = document.createElement("canvas"); tile.width = tile.height = size;
+        const ctx = tile.getContext("2d");
+        if (size === 64) { ctx.fillStyle = "#625971"; ctx.fillRect(0, 0, size, size); }
+        ctx.drawImage(from, 0, 0, size, size); from = tile;
+      }
+      for (const canvas of ring.querySelectorAll("canvas")) canvas.getContext("2d").drawImage(from, 0, 0);
+      ring.setAttribute("data-ink", "");
+    };
+    if (img.complete) apply();
+    else {
+      const options = {once: true, signal: pending.signal};
+      img.addEventListener("load", apply, options); img.addEventListener("error", failed, options);
+    }
   }
   let accented = false;
   function updateColor(bass) {
@@ -143,6 +158,6 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
       mapSpectrum(); updateColor(bassLevel);
       if (!frame && (bassLevel || target.some(Boolean))) frame = requestAnimationFrame(tick);
     },
-    dispose() { listen(false); cancelAnimationFrame(frame); }
+    dispose() { pending?.abort(); observed = null; listen(false); cancelAnimationFrame(frame); }
   };
 };

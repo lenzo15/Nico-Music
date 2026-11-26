@@ -7,7 +7,7 @@ let now = 0, nextFrame, path, bassColor = false;
 const ringStyle = new Map();
 const ring = {querySelector: () => ({}), style: {setProperty: (k,v) => ringStyle.set(k,v)}, toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
 const title = {};
-const root = {querySelector: s => s === '.halo-ring' ? ring : s === '#haloTitle' ? title : {dataset:{}, setAttribute: (_, value) => { path = value; }}};
+const root = {querySelector: s => s === '.halo-ring' ? ring : s === '#haloTitle' ? title : {querySelector: () => null, setAttribute: (_, value) => { path = value; }}};
 vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/preset.js'), 'utf8'), {
   document, performance: { now: () => now },
   requestAnimationFrame(fn) { nextFrame = fn; return 1; }, cancelAnimationFrame() { nextFrame = undefined; },
