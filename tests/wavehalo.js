@@ -31,8 +31,8 @@ for (const levels of [[90,0,0],[0,90,0],[0,0,90],[100,100,100]]) {
   for (let n = 0; n < 12; n++) packet(levels);
   const held = path;
   const active = bars();
-  assert.equal(active.length, 128); assert(Math.min(...active) > 3); // no dead arcs, even for one band
-  assert(Math.max(...active) > 2 * Math.min(...active)); // still has distinct peaks
+  assert.equal(active.length, 128); assert(Math.abs(Math.min(...active)) < .01); // common radial displacement removed
+  assert(Math.max(...active) > 12); // local peaks survive
   for (let n = 0; n < 12; n++) packet(levels);
   assert.equal(path, held); // constant absolute energy holds, without onset accents
   for (let n = 0; n < 96; n++) frame();
@@ -41,9 +41,10 @@ for (const levels of [[90,0,0],[0,90,0],[0,0,90],[100,100,100]]) {
 tune('attack', 0); tune('release', 0); packet([50,0,0]);
 const half = Math.max(...bars()); packet([100,0,0]);
 assert(Math.abs(Math.max(...bars()) / half - 2) < .01);
-tune('width', 10); assert(Math.min(...bars()) > 3); // width controls accents, not ring coverage
-const full = bars(); tune('ring', 0); assert(Math.min(...bars()) < .01);
-assert(Math.max(...full) >= Math.max(...bars()));
+tune('width', 10);
+const moving = () => bars().filter(v => v > 1).length;
+const wideCoverage = moving(); tune('ring', 0);
+assert(wideCoverage > moving() + 32); // broad response still reaches beyond the narrow peaks
 tune('width', 100); const broad = bars().filter(v => v > 2).length; tune('width', 25);
 assert(bars().filter(v => v > 2).length < broad);
 tune('bass', 0); assert.equal(path, rest);

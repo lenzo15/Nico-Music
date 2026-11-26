@@ -79,8 +79,14 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   const energy = [0, 0, 0], target = [0, 0, 0];
   let active = false, unsupported = false, frame = 0, last = 0, received = 0;
   function draw() {
-    const d = bins.map(({x,y,base,bass,mid,high}) => {
-      const pulse = Math.min(80, bass * energy[0] + mid * energy[1] + high * energy[2]);
+    // Remove the spatial floor of this frame, not the change since the last packet.
+    let floor = Infinity;
+    for (const bin of bins) {
+      bin.level = bin.bass * energy[0] + bin.mid * energy[1] + bin.high * energy[2];
+      floor = Math.min(floor, bin.level);
+    }
+    const d = bins.map(({x,y,base,level}) => {
+      const pulse = Math.min(80, level - floor);
       const inner = radius - pulse * tuning.inward / 100, outer = radius + base + pulse;
       return `M${(x * inner).toFixed(2)},${(y * inner).toFixed(2)}L${(x * outer).toFixed(2)},${(y * outer).toFixed(2)}`;
     });
