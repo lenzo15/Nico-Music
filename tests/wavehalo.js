@@ -2,15 +2,21 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
-const document = { currentScript: {}, createElement: () => ({}) };
+const document = { currentScript: {}, createElement: () => ({}), addEventListener() {} };
+const saved = new Map();
+const localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k,v) => saved.set(k,v) };
 let now = 0, nextFrame, path;
-const stage = { querySelector: () => ({ setAttribute: (_, value) => { path = value; } }) };
+const sliders = ['bass','mid','high','width','inward','attack','release'].map(key => ({dataset:{key}, setAttribute(){}}));
+const reset = {}, panel = {querySelectorAll: () => sliders, querySelector: s => s === 'button' ? reset : {}};
+const root = {querySelector: s => s === '.halo-tuner' ? panel : {setAttribute: (_, value) => { path = value; }}};
 vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/preset.js'), 'utf8'), {
-  document, performance: { now: () => now },
+  document, localStorage, performance: { now: () => now },
   requestAnimationFrame(fn) { nextFrame = fn; return 1; }, cancelAnimationFrame() { nextFrame = undefined; },
 });
-const preset = document.currentScript.mountFocus({ root: {firstElementChild: stage}, background: {append() {}},
+const mount = () => document.currentScript.mountFocus({root, background: {append() {}},
   renderCover() {}, requestLevels() {}, reduceMotion: {matches: false} });
+const preset = mount();
+function tune(key, valueAsNumber) { panel.oninput({target: {dataset: {key}, valueAsNumber}}); }
 const rest = path;
 preset.update({playing: true});
 function frame() { now += 16; const fn = nextFrame; nextFrame = undefined; fn?.(now); }
@@ -22,18 +28,22 @@ function bars() {
   });
 }
 for (const levels of [[90,0,0],[0,90,0],[0,0,90],[100,100,100]]) {
-  preset.levels(levels); frame();
-  const peaks = bars(), max = Math.max(...peaks), i = peaks.indexOf(max);
-  assert.equal(peaks.length, 128);
-  assert(max > 50 && peaks.filter(v => v > 25).length <= 6);
-  assert(Math.max(peaks[(i+127)%128], peaks[(i+1)%128]) < max * .3);
-  frame(); for (let n = 0; n < 6; n++) packet(levels);
-  assert(bars()[i] < max * .4); // held tone, not another attack
-  for (let n = 0; n < 48; n++) frame();
+  for (let n = 0; n < 12; n++) packet(levels);
+  const held = path;
+  assert.equal(bars().length, 128); assert(Math.max(...bars()) > 15);
+  for (let n = 0; n < 12; n++) packet(levels);
+  assert.equal(path, held); // constant absolute energy holds, without onset accents
+  for (let n = 0; n < 96; n++) frame();
   assert.equal(path, rest); // missing packets release fully
 }
-for (let n = 0; n < 20; n++) packet([70,0,0]);
-const steady = bars(); preset.levels([78,0,0]); frame();
-assert(bars().some((v,i) => v - steady[i] > 22)); // modest kick above a loud backing
-preset.update({playing: false}); assert.equal(path, rest); assert(!nextFrame);
-console.log('PASS: sparse needles, first-frame attacks, fast release, small level rises and idle reset');
+tune('attack', 0); tune('release', 0); packet([50,0,0]);
+const half = Math.max(...bars()); packet([100,0,0]);
+assert(Math.abs(Math.max(...bars()) / half - 2) < .01);
+const broad = bars().filter(v => v > 2).length; tune('width', 25);
+assert(bars().filter(v => v > 2).length < broad);
+tune('bass', 0); assert.equal(path, rest);
+tune('bass', 80); tune('inward', 0); assert(Math.max(...bars()) < .01 && path !== rest);
+packet([0,0,0]); assert.equal(path, rest);
+preset.dispose(); assert(!nextFrame);
+const again = mount(); assert.equal(sliders[0].value, 80); reset.onclick(); assert.equal(sliders[0].value, 34); again.dispose();
+console.log('PASS: sustained absolute levels, linear gain, live shape/response controls, persistence and reset');

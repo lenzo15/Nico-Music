@@ -27,6 +27,20 @@ body[data-focus-preset="wavehalo"] #focusBackground::after {
   animation: halo-breathe 4.8s ease-in-out infinite alternate; }
 @keyframes halo-breathe { from { opacity: .82; transform: scale(.997); } to { opacity: 1; transform: scale(1.008); } }
 
+.halo-tuner { position: absolute; z-index: 1; top: 14px; right: 18px; color: #fff; }
+.halo-tuner summary { display: grid; place-items: center; margin-left: auto; cursor: pointer;
+  width: 34px; height: 34px; border: 1px solid #ffffff40; border-radius: 50%; background: #1d2638bb; }
+.halo-tuner summary svg { width: 18px; height: 18px; }
+.halo-tuner summary:hover, .halo-tuner[open] summary { background: #283449; }
+.halo-controls { width: min(238px, 70cqw); max-height: calc(100cqh - 66px); overflow: auto;
+  margin-top: 8px; padding: 14px; border: 1px solid #ffffff30; border-radius: 16px;
+  background: #202b3bf5; box-shadow: 0 10px 28px #13152038; font-size: 13px; }
+.halo-controls label { display: grid; grid-template-columns: 1fr auto; align-items: center; margin-top: 8px; }
+.halo-controls label span { color: #ceddf5; font-variant-numeric: tabular-nums; }
+.halo-controls label b { font-weight: normal; }
+.halo-controls input[type="range"] { grid-column: 1 / -1; width: 100%; height: 18px; appearance: auto; accent-color: #c8daff; background: none; }
+.halo-controls button { margin-top: 10px; padding: 5px 10px; color: #e2ebff; background: #ffffff18; border-radius: 8px; }
+
 /* Keep the host's transport and preset picker usable against both pale and dark covers. */
 body[data-focus-preset="wavehalo"] #focusView { color: white; --line: #ffffff40;
   --focus-tool-bg: #1d2638bb; --focus-tool-hover: #283449; --menu-glass: #202b3bed;
