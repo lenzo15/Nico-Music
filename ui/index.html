@@ -209,12 +209,15 @@
         </div>
       </form>
     </dialog>
-    <dialog id="deleteListDialog" role="alertdialog" aria-labelledby="deleteListTitle" aria-describedby="deleteListHint">
-      <h2 id="deleteListTitle">删除歌单？</h2>
-      <p id="deleteListHint"></p>
-      <div class="alertActions">
-        <button type="button" id="cancelDeleteList" autofocus>取消</button>
-        <button type="button" id="confirmDeleteList">删除</button>
+    <dialog id="deleteListDialog" class="sheet" role="alertdialog" aria-labelledby="deleteListTitle" aria-describedby="deleteListHint">
+      <header class="sheetHeader">
+        <h2 id="deleteListTitle">删除「<bdi id="deleteListName"></bdi>」？</h2>
+        <button type="button" class="close icon" aria-label="关闭删除确认"><i data-icon="close"></i></button>
+      </header>
+      <p id="deleteListHint">只删除歌单，歌曲仍保留在音乐库中。</p>
+      <div class="actions">
+        <button type="button" id="cancelDeleteList" class="subtle" autofocus>取消</button>
+        <button type="button" id="confirmDeleteList" class="primary">删除歌单</button>
       </div>
     </dialog>
     <dialog id="mixDialog" class="sheet" aria-labelledby="mixTitle" aria-describedby="mixSummary">

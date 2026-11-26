@@ -293,7 +293,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         js("$('listNav').lastChild.click()")
         assert js("!document.querySelector('.row')")
         js("$('deleteList').click()")
-        assert js("$('deleteListDialog').matches(':modal') && $('deleteListHint').textContent.includes('From song') && document.activeElement === $('cancelDeleteList')")
+        assert js("$('deleteListDialog').matches(':modal') && $('deleteListName').textContent === 'From song' && document.activeElement === $('cancelDeleteList')")
         js("$('cancelDeleteList').click()")
         assert js("!$('deleteListDialog').open && currentList().name === 'From song'")
         js("$('deleteList').click(); $('confirmDeleteList').click()")

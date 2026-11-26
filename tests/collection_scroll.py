@@ -133,10 +133,12 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             js("$('deleteList').click()")
             assert js("""(() => {
               const d=$('deleteListDialog'), hint=$('deleteListHint');
-              return d.matches(':modal') && hint.scrollHeight <= hint.clientHeight &&
+              return d.matches(':modal') && document.activeElement === $('cancelDeleteList') &&
+                $('deleteListName').textContent === 'Scroll test' && hint.scrollHeight <= hint.clientHeight &&
                 d.scrollHeight <= d.clientHeight && d.offsetWidth - d.clientWidth <= 2;
             })()""")
-            js("$('deleteListHint').textContent='将删除「' + '歌'.repeat(60) + '」，其中的歌曲仍保留在音乐库中。'")
+            js("$('deleteListName').textContent='歌'.repeat(60)")
+            assert js("$('deleteListName').scrollWidth > $('deleteListName').clientWidth && $('deleteListTitle').scrollWidth <= $('deleteListTitle').clientWidth")
             assert js("$('deleteListHint').scrollHeight <= $('deleteListHint').clientHeight")
             x, y, bottom = js("(() => { const r=$('confirmDeleteList').getBoundingClientRect(); return [r.x+r.width/2,r.y+r.height/2,r.bottom]; })()")
             cdp('Input.dispatchMouseEvent', {'type': 'mousePressed', 'button': 'left', 'buttons': 1,
@@ -165,9 +167,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                   const fits=d.scrollHeight <= d.clientHeight && d.scrollWidth <= d.clientWidth;
                   d.close(); return fits; }})()"""), (width, height, dialog)
             chrome = []
-            for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), (None, 'mixDialog'), ('viewQueue', 'queueDialog')]:
+            for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), (None, 'mixDialog'), ('deleteList', 'deleteListDialog'), ('viewQueue', 'queueDialog')]:
                 js(f"$('{opener}').click()" if opener else "previewMix({name:'试听',count:3,token:'1'})")
-                if dialog != 'settings':
+                if dialog not in ('settings', 'deleteListDialog'):
                     assert js(f"""(() => {{ const panel = $('{dialog}').querySelector('.importFields, .queueCard');
                       const s = getComputedStyle(panel);
                       return s.backgroundColor === 'rgba(0, 0, 0, 0)' && s.borderTopStyle === 'none'; }})()"""), dialog
@@ -178,7 +180,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                 assert js(f"getComputedStyle($('{dialog}').querySelector('h2')).fontSize === getComputedStyle($('heading')).fontSize")
                 js(f"$('{dialog}').querySelector('.close').click()")
             assert all(style == chrome[0] for style in chrome), chrome
-            print(f'OK: {width}x{height}, compact dialogs fit and all four sheets share header and surface styles')
+            print(f'OK: {width}x{height}, compact dialogs fit and all five sheets share header and surface styles')
         js("select('library'); $('rows').focus()")
         cdp('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})
         cdp('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})

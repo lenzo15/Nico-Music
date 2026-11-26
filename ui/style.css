@@ -976,19 +976,14 @@ dialog input {
 .rememberExit input { width: auto; margin: 0; padding: 0; accent-color: var(--red); }
 .pluginConfirm { width: min(340px, 90vw); padding: 0; overflow: hidden; }
 .pluginConfirm iframe { display: block; width: 100%; height: min(190px, 80vh); border: 0; }
-#deleteListDialog { width: min(320px, 90vw); padding: 0; overflow: clip; text-align: center; background: var(--wash); }
-#deleteListDialog[open] { display: flex; flex-direction: column; }
-#deleteListTitle { margin: 22px 20px 6px; font-size: 18px; letter-spacing: -.02em; }
-#deleteListHint { min-height: 0; margin: 0 20px 20px; line-height: 1.5; overflow-wrap: anywhere; overflow: clip; }
-#deleteListDialog .alertActions { flex: none; }
-.alertActions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
-.alertActions button { min-height: 44px; font-size: 15px; }
-.alertActions button:hover { background: #76768012; }
-/* These buttons sit flush with the dialog edge: change color, not position, on press. */
-#deleteListDialog button:active { transform: none; background: #76768024; }
-.alertActions button:focus-visible { outline-offset: -4px; border-radius: 8px; }
-#cancelDeleteList { font-weight: 600; }
-#confirmDeleteList { color: var(--red-dark); border-left: 1px solid var(--line); }
+#deleteListDialog { width: min(360px, 90vw); }
+#deleteListDialog .sheetHeader { padding-bottom: 8px; }
+#deleteListTitle { display: flex; min-width: 0; white-space: nowrap; }
+#deleteListName { overflow: hidden; text-overflow: ellipsis; }
+#deleteListDialog .close { flex: none; }
+#deleteListHint { margin: 0 var(--sheet-inset); line-height: 1.5; }
+#deleteListDialog .actions { margin: 18px var(--sheet-inset) var(--sheet-inset); }
+#deleteListDialog button:active { transform: none; filter: brightness(.94); }
 #queueDialog { margin: auto 16px calc(var(--bar) + 8px) auto; width: min(380px, 90vw); }
 .queueCard { margin: 0 var(--sheet-inset) var(--sheet-inset); padding: 8px; }
 #queueEmpty { margin: 0; padding: 16px 8px; text-align: center; }

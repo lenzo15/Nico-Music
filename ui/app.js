@@ -168,7 +168,7 @@ $("cancelDeleteList").onclick = () => deleteListDialog.close();
 $("deleteList").onclick = () => {
   const list = currentList();
   if (!list) return;
-  $("deleteListHint").textContent = `将删除「${list.name}」，其中的歌曲仍保留在音乐库中。`;
+  $("deleteListName").textContent = $("deleteListName").title = list.name;
   $("confirmDeleteList").onclick = () => {
     deleteListDialog.close();
     try {
