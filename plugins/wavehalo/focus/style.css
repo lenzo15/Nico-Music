@@ -48,22 +48,10 @@ body[data-focus-preset="wavehalo"] #focusView {
 }
 .halo-art > svg { width: 28%; height: 28%; color: #fff8; }
 @keyframes halo-turn { to { transform: rotate(1turn); } }
-.halo-ring { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: none; stroke-opacity: .88;
-  stroke-width: 3.4; stroke-linecap: square;
-  animation: halo-breathe 4.8s ease-in-out infinite alternate;
-  transition: stroke-opacity 280ms ease-out; }
-.halo-ring foreignObject, .halo-ring[data-ink] g[mask] > circle { display: none; }
-.halo-ring[data-ink] foreignObject { display: block; }
-.halo-ring canvas { display: block; width: 100%; height: 100%; filter: url(#halo-palette); }
-.halo-glow { opacity: .65; filter: blur(2px); transition: opacity 280ms ease-out, filter 280ms ease-out; }
-.halo-ring[data-bass] { stroke-opacity: calc(.88 + .12 * var(--halo-boost)); }
-.halo-ring[data-bass] .halo-glow { opacity: calc(.65 + .25 * var(--halo-boost));
-  filter: blur(calc(2px + 1.5px * var(--halo-boost))); }
-.halo-ring[data-bass], .halo-ring[data-bass] .halo-glow { transition-duration: var(--halo-brighten-time, 150ms); }
-.halo-ring path { opacity: 0; transition: opacity var(--halo-fade-out) ease-out; }
-#focusView.playing .halo-ring path { opacity: 1; transition-duration: var(--halo-fade-in); }
-@starting-style { #focusView.playing .halo-ring path { opacity: 0; } }
-@keyframes halo-breathe { from { opacity: .82; transform: scale(.997); } to { opacity: 1; transform: scale(1.008); } }
+.halo-ring { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%;
+  opacity: 0; transition: opacity var(--halo-fade-out) ease-out; }
+#focusView.playing .halo-ring { opacity: 1; transition-duration: var(--halo-fade-in); }
+@starting-style { #focusView.playing .halo-ring { opacity: 0; } }
 .halo-caption { max-width: 84%; text-align: center; }
 .halo-caption h2 { margin: 4px 0; font-size: clamp(18px,4cqh,32px); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: no-preference) {
@@ -72,5 +60,5 @@ body[data-focus-preset="wavehalo"] #focusView {
 @keyframes halo-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .halo-art, .halo-ring { animation: none; }
-  .halo-ring, .halo-ring path, .halo-glow { transition: none; }
+  .halo-ring { transition: none; }
 }

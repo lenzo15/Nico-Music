@@ -80,8 +80,14 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
                 w.writeframes((period * 1000 + bytes(32000)) * 8)
             else:
                 w.writeframes(bytes(16000 * (2 if name == 'A' else 24)))
+    thumbs = {}
+    if '--spectrum' in sys.argv:
+        from PIL import Image
+        for n, color in [('C', '#302040'), ('B', '#f0d080')]:
+            Image.new('RGB', (48, 48), color).save(media / (n+'.png'))
+            thumbs[n] = f'http://127.0.0.1:{server.server_port}/{n}.png'
     (profile / 'library.tsv').write_text(''.join(
-        (media.joinpath(n+'.wav').as_uri() if '--hot-plugins' in sys.argv else f'http://127.0.0.1:{server.server_port}/{n}.wav') + f'\t{n}\t\n' for n in 'CBA'), encoding='utf8')
+        (media.joinpath(n+'.wav').as_uri() if '--hot-plugins' in sys.argv else f'http://127.0.0.1:{server.server_port}/{n}.wav') + f'\t{n}\t{thumbs.get(n, "")}\n' for n in 'CBA'), encoding='utf8')
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
@@ -113,31 +119,50 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             exercise(exe, root, profile, proc, js, cdp, until)
             sys.exit(0)
         if '--spectrum' in sys.argv:
-            js("""window.peaks=new Set();chrome.webview.addEventListener('message',({data})=>{
+            js("""window.inkLengths=[]; const move=CanvasRenderingContext2D.prototype.moveTo;
+                CanvasRenderingContext2D.prototype.moveTo=function(x,y){
+                  if(this.canvas.classList.contains('halo-ring')) {if(inkLengths.length===128) inkLengths=[]; inkLengths.push(160-Math.hypot(x,y));}
+                  return move.call(this,x,y);
+                };window.peaks=new Set();chrome.webview.addEventListener('message',({data})=>{
                 if(data.spectrum?.length===128) peaks.add(data.spectrum.indexOf(Math.max(...data.spectrum)));
             });send('play 0')""")
             until(lambda: js('state.index===0 && state.playing'))
             js("$('cover').click()")
-            until(lambda: js("document.body.dataset.focusPreset==='wavehalo' && !!document.querySelector('.halo-ring path')"))
+            until(lambda: js("document.body.dataset.focusPreset==='wavehalo' && !!document.querySelector('canvas.halo-ring[data-ink]')"))
             # Actual loopback through native FFT, host bridge and mounted preset.
             seen = set()
             def both_needles():
-                seen.add(js("""(()=>{const coords=document.querySelector('.halo-ring path').getAttribute('d');
-                    const lengths=[...coords.matchAll(/M([-\\d.]+),([-\\d.]+)/g)].map(m=>160-Math.hypot(+m[1],+m[2]));
-                    return lengths.indexOf(Math.max(...lengths));})()"""))
+                seen.add(js('inkLengths.indexOf(Math.max(...inkLengths))'))
                 return any(21<=i<=26 for i in seen) and any(52<=i<=57 for i in seen)
             until(both_needles)
             assert js('[...peaks].some(i=>i>=21 && i<=26) && [...peaks].some(i=>i>=52 && i<=57)')
-            js("window.barOpacity=()=>Number(getComputedStyle(document.querySelector('.halo-ring path')).opacity);send('pause')")
+            js("window.barOpacity=()=>Number(getComputedStyle(document.querySelector('canvas.halo-ring')).opacity);send('pause')")
             until(lambda: js('state.paused && barOpacity()>0 && barOpacity()<1'))
             until(lambda: js('barOpacity()===0 && !$("focusView").hidden'))
             js("send('pause')")
             until(lambda: js('state.playing && barOpacity()>0 && barOpacity()<1'))
             until(lambda: js('barOpacity()===1'))
+            # Switch artwork on the mounted preset; compare several real WebView2 frames
+            # to the unpainted scene at the square edges (well outside any spokes).
+            import base64, io
+            from PIL import ImageChops
+            for index in (1, 0):
+                js(f"send('play {index}')")
+                until(lambda: js(f"state.index==={index} && !!document.querySelector('.halo-ring[data-ink]') && document.querySelector('.halo-art img')?.naturalWidth>0"))
+                x,y,w,h=js("window.canvasRing=document.querySelector('canvas.halo-ring');[canvasRing.getBoundingClientRect()].map(r=>[r.x,r.y,r.width,r.height])[0]")
+                def capture():
+                    data=cdp('Page.captureScreenshot', {'clip':dict(x=x, y=y, width=w, height=h, scale=1)})['data']
+                    return Image.open(io.BytesIO(base64.b64decode(data))).convert('RGB')
+                js("canvasRing.style.visibility='hidden'"); baseline=capture(); js("canvasRing.style.visibility=''")
+                for _ in range(8):
+                    delta=ImageChops.difference(capture(),baseline); a,b=delta.size
+                    assert delta.getbbox(), 'bars must actually render'
+                    for box in [(0,0,a,2),(0,b-2,a,b),(0,0,2,b),(a-2,0,a,b)]:
+                        assert max(v for _,v in delta.crop(box).getextrema())<=2, (index,box)
             js("send('repeat off');send('seek 23')")
             until(lambda: js('!$("focusView").hidden && !state.playing && barOpacity()<1 && barOpacity()>0'))
             until(lambda: js('state.index<0 && $("focusView").hidden'))
-            print('OK: live frequency needles, pause/resume opacity transitions and fade before EOF teardown')
+            print('OK: live frequency needles, WebView2 edge pixels across two cover switches, pause/resume and EOF fades')
             sys.exit(0)
         if '--hot-plugins' in sys.argv:
             from hot_plugins import exercise
@@ -254,7 +279,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             assert js("!$('auroraCanvas') && $('focusContent').textContent==='C'")
             assert default_bars == js("['.windowBar','footer'].map(s=>getComputedStyle(document.querySelector(s)).background)")
             js("$('focusPresetTool').click(); $('focusPreset').querySelector('[data-id=wavehalo]').click()")
-            until(lambda: js("document.body.dataset.focusPreset==='wavehalo' && !!document.querySelector('.halo-ring path')"))
+            until(lambda: js("document.body.dataset.focusPreset==='wavehalo' && !!document.querySelector('canvas.halo-ring')"))
             cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
             angle = js("getComputedStyle(document.querySelector('.halo-art')).transform")
             until(lambda: js("getComputedStyle(document.querySelector('.halo-art')).transform") != angle)

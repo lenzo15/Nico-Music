@@ -16,12 +16,8 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
   background.append(wash);
   root.innerHTML = `<div class="halo-stage" aria-hidden="true">
     <div class="halo-rim"></div><div class="halo-art"></div>
-    <svg class="halo-ring" viewBox="-256 -256 512 512">
-      <defs>
-        <!-- Keep the mask boundary outside the paint surface at fractional scales. -->
-        <mask id="halo-bars" maskUnits="userSpaceOnUse" x="-288" y="-288" width="576" height="576">
-          <path stroke="white" fill="none"/>
-        </mask>
+    <canvas class="halo-ring" width="768" height="768"></canvas>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
         <filter id="halo-palette" color-interpolation-filters="sRGB">
           <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  .213 .715 .072 0 0"/>
           <feComponentTransfer><feFuncA type="discrete" tableValues="1 .5"/></feComponentTransfer>
@@ -29,17 +25,17 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
                + a light/dark offset. Complementary chroma, not a list of swatches. -->
           <feColorMatrix values="-.62 .336 .034 1.48 -.42  .100 -.384 .034 1.48 -.42  .100 .336 -.686 1.48 -.42  0 0 0 0 1"/>
         </filter>
-      </defs>
-      <g class="halo-glow"><g mask="url(#halo-bars)"><circle r="250" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g></g>
-      <g mask="url(#halo-bars)"><circle r="250" fill="white"/><foreignObject x="-256" y="-256" width="512" height="512"><canvas width="1" height="1"></canvas></foreignObject></g>
-    </svg>
+    </defs></svg>
   </div>
   <div class="halo-caption"><h2 id="haloTitle"></h2></div>`;
   const title = root.querySelector("#haloTitle");
-  const art = root.querySelector(".halo-art"), path = root.querySelector(".halo-ring path");
+  const art = root.querySelector(".halo-art");
   const ring = root.querySelector(".halo-ring");
-  ring.style.setProperty("--halo-boost", String(Math.max(0, Math.min(200, tuning.bassBrightness)) / 100));
-  ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
+  const ctx = ring.getContext("2d"), boost = Math.max(0, Math.min(200, tuning.bassBrightness)) / 100;
+  const scale = ring.width / 512;
+  ctx.setTransform(scale, 0, 0, scale, ring.width / 2, ring.height / 2);
+  ctx.lineCap = "square";
+  let ink = "white", brightness = 0;
   ring.style.setProperty("--halo-fade-in", `${tuning.fadeInMs}ms`);
   ring.style.setProperty("--halo-fade-out", `${tuning.fadeOutMs}ms`);
   let observed = null, pending;
@@ -47,9 +43,12 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
     const img = art.querySelector("img");
     if (img === observed) return;
     pending?.abort(); observed = img;
-    if (!img) { ring.removeAttribute("data-ink"); return; }
+    const failed = () => {
+      if (observed !== img) return;
+      ink = "white"; ring.removeAttribute("data-ink"); draw();
+    };
+    if (!img) return failed();
     pending = new AbortController();
-    const failed = () => { if (observed === img) ring.removeAttribute("data-ink"); };
     const apply = () => {
       if (observed !== img) return;
       if (!img.naturalWidth) return failed();
@@ -62,8 +61,11 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
         if (size === 64) { ctx.fillStyle = "#625971"; ctx.fillRect(0, 0, size, size); }
         ctx.drawImage(from, 0, 0, size, size); from = tile;
       }
-      for (const canvas of ring.querySelectorAll("canvas")) canvas.getContext("2d").drawImage(from, 0, 0);
-      ring.setAttribute("data-ink", "");
+      // Filter just one offscreen swatch. Only actual strokes reach the visible canvas.
+      const swatch = document.createElement("canvas"); swatch.width = swatch.height = 1;
+      const paint = swatch.getContext("2d"); paint.filter = "url(#halo-palette)";
+      paint.drawImage(from, 0, 0);
+      ink = ctx.createPattern(swatch, "repeat"); ring.setAttribute("data-ink", ""); draw();
     };
     if (img.complete) apply();
     else {
@@ -104,19 +106,25 @@ document.currentScript.mountFocus = ({ root, background, renderCover, requestLev
   }
   function draw() {
     const shoulder = .32 * (tuning.width / 100) ** 2;
-    const d = bins.map(({ x, y }, i) => {
+    ctx.clearRect(-256, -256, 512, 512); ctx.beginPath();
+    bins.forEach(({ x, y }, i) => {
       // Width affects only the short shoulders; a narrow note stays a needle.
       const pulse = Math.min(80, Math.max(energy[i], shoulder * (energy[i - 1] || 0), shoulder * (energy[i + 1] || 0)));
       const inner = radius - pulse * tuning.inward / 100, outer = radius + 5 + pulse;
-      return `M${(x * inner).toFixed(2)},${(y * inner).toFixed(2)}L${(x * outer).toFixed(2)},${(y * outer).toFixed(2)}`;
+      ctx.moveTo(x * inner, y * inner); ctx.lineTo(x * outer, y * outer);
     });
-    path.setAttribute("d", d.join(""));
+    ctx.strokeStyle = ink;
+    for (const [width, alpha] of [[10 + 4 * brightness, .07 + .04 * brightness], [6, .16], [3.4, Math.min(1, .88 + .12 * brightness)]]) {
+      ctx.lineWidth = width; ctx.globalAlpha = alpha; ctx.stroke();
+    }
   }
   function tick(now) {
     frame = 0;
     const dt = Math.min(80, now - (last || now - 16)); last = now;
     if (now - received > 160) { raw.fill(0); target.fill(0); bassLevel = 0; updateColor(0); }
-    let changed = false;
+    const light = accented ? boost : 0, gapLight = light - brightness;
+    let changed = gapLight !== 0;
+    brightness += Math.abs(gapLight) < .005 ? gapLight : gapLight * (1 - Math.exp(-dt / (accented ? tuning.brightenMs || 1 : 280)));
     for (let i = 0; i < count; i++) {
       const gap = target[i] - energy[i], time = gap > 0 ? tuning.attack : tuning.release;
       changed ||= gap !== 0;

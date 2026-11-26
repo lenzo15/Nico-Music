@@ -5,7 +5,9 @@ const fs = require('node:fs');
 const document = { currentScript: {}, createElement: () => ({}) };
 let now = 0, nextFrame, path, bassColor = false;
 const ringStyle = new Map();
-const ring = {querySelector: () => ({}), style: {setProperty: (k,v) => ringStyle.set(k,v)}, toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
+let segments = [];
+const ctx = {setTransform(){}, clearRect(){}, beginPath(){segments=[];}, moveTo(x,y){segments.push([x,y]);}, lineTo(x,y){segments.at(-1).push(x,y);}, stroke(){path=JSON.stringify(segments);}};
+const ring = {width:768,height:768,getContext:()=>ctx, style: {setProperty: (k,v) => ringStyle.set(k,v)}, toggleAttribute(name, on) { assert.equal(name, 'data-bass'); bassColor = on; }};
 const title = {};
 const root = {querySelector: s => s === '.halo-ring' ? ring : s === '#haloTitle' ? title : {querySelector: () => null, setAttribute: (_, value) => { path = value; }}};
 vm.runInNewContext(fs.readFileSync(require.resolve('../plugins/wavehalo/focus/preset.js'), 'utf8'), {
@@ -16,8 +18,7 @@ const mount = () => document.currentScript.mountFocus({root, background: {append
   renderCover() {}, requestLevels(on, options) { if (on) assert.equal(options.spectrum, true); }, reduceMotion: {matches: false} });
 const preset = mount();
 assert.doesNotMatch(root.innerHTML, /<(?:button|details|input)\b/i);
-assert.equal(ringStyle.get('--halo-boost'), '1.5');
-assert.equal(ringStyle.get('--halo-brighten-time'), '30ms');
+assert.equal(ringStyle.get('--halo-fade-in'), '400ms');
 const rest = path;
 assert.match(root.innerHTML, /<h2 id="haloTitle"><\/h2>/);
 const trackTitle = '夜曲 <img src=x onerror=alert(1)> & Vinyl';
@@ -27,7 +28,7 @@ assert.equal(title.title, trackTitle);
 function frame() { now += 16; const fn = nextFrame; nextFrame = undefined; fn?.(now); }
 function packet(levels, spectrum) { preset.levels(levels, spectrum); frame(); frame(); }
 function bars() {
-  return [...path.matchAll(/M([-\d.]+),([-\d.]+)L([-\d.]+),([-\d.]+)/g)].map(([,x,y,u,v]) => {
+  return JSON.parse(path).map(([x,y,u,v]) => {
     assert(Math.hypot(u,v) < 250); // leave room for the glow at maximum drive
     return 160 - Math.hypot(x,y);
   });

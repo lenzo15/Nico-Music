@@ -57,19 +57,19 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     other = f'http://localhost:{server.server_port}'
     (p / 'test.html').write_text('''<link rel="stylesheet" href="OTHER/style.css"><style>
-      *{box-sizing:border-box}body{margin:0;background:#555}.halo-ring{width:120px;height:120px;position:static;animation:none;stroke-width:54;stroke-opacity:1}
-      .halo-ring path {opacity:1;transition:none}.halo-stage{width:120px;animation:none}.halo-art,.halo-rim,.halo-caption,.halo-glow{display:none}
+      *{box-sizing:border-box}body{margin:0;background:#555}.halo-ring{width:256px;height:256px;position:static;opacity:1;transition:none}
+      .halo-stage{width:256px;animation:none}.halo-art,.halo-rim,.halo-caption{display:none}
       </style><script src="OTHER/preset.js" id="preset"></script><div id="root"></div><script>
       let src='';const root=document.querySelector('#root');const player=preset.mountFocus({root,background:document.createElement('div'),
         renderCover(el){if(el.dataset.cover===src)return;el.dataset.cover=src;el.replaceChildren();if(!src)return;
           const img=new Image();img.referrerPolicy='no-referrer';img.onerror=()=>img.remove();el.append(img);img.src=src},
         reduceMotion:{matches:false},requestLevels(){}});
       const play=name=>{src=name?'OTHER/'+name+'.png':'';player.update({title:name,playing:true})};play('');
-      root.querySelector('path').setAttribute('d','M-200,0H200');</script>'''.replace('OTHER', other), encoding='utf8')
+    </script>'''.replace('OTHER', other), encoding='utf8')
     page = f'http://127.0.0.1:{server.server_port}/test.html'
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-    proc = subprocess.Popen([browser, '--headless=new', '--disable-gpu', '--no-first-run', '--hide-scrollbars',
+    proc = subprocess.Popen([browser, '--headless=new', '--no-first-run', '--hide-scrollbars',
                              f'--user-data-dir={p / "profile"}', '--window-size=400,300',
                              f'--remote-debugging-port={port}', page], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ws = None
@@ -90,10 +90,10 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         def js(expression): return cdp('Runtime.evaluate', expression=expression, returnByValue=True)['result'].get('value')
         def pixel():
             with Image.open(io.BytesIO(base64.b64decode(cdp('Page.captureScreenshot')['data']))) as im:
-                return im.convert('RGB').getpixel((60, 60))
+                return im.convert('RGB').getpixel((209, 128))
         def play(name): js(f'play({json.dumps(name)})')
         def loaded(): until(lambda: js("document.querySelector('.halo-art img')?.naturalWidth>0 && !!document.querySelector('.halo-ring[data-ink]')"))
-        until(lambda: js("typeof play==='function'")); assert pixel() == (255,255,255)
+        until(lambda: js("typeof play==='function'")); white = pixel(); assert min(white)>210 and len(set(white))==1, white
         samples = []
         for i in range(len(colors)):
             play(str(i)); loaded(); samples.append(pixel())
@@ -107,23 +107,23 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         play('1'); loaded(); assert pixel()==samples[1]; gate.set()
         until(lambda: js("performance.getEntriesByType('resource').some(e=>e.name.endsWith('slow.png'))")); assert pixel()==samples[1]
         play('mix0'); loaded(); mix=pixel(); play('mix1'); loaded(); assert pixel()==mix and mix not in samples, (mix,samples)
-        play('broken'); until(lambda: js("!document.querySelector('.halo-art img') && !document.querySelector('.halo-ring[data-ink]')")); assert pixel()==(255,255,255)
-        play('2'); loaded(); assert pixel()==samples[2]; play(''); assert pixel()==(255,255,255)
-        # Fractional SVG bounds while breathing used to expose the square paint surface.
+        play('broken'); until(lambda: js("!document.querySelector('.halo-art img') && !document.querySelector('.halo-ring[data-ink]')")); assert pixel()==white
+        play('2'); loaded(); assert pixel()==samples[2]; play(''); assert pixel()==white
+        # Check the real canvas at fractional bounds with active spectrum packets.
         # Check all four edges, with glow enabled, not just a pixel on the stroke.
         js("""window.ring=root.querySelector('.halo-ring'); Object.assign(ring.style,{
             position:'absolute',left:'20.25px',top:'12.75px',width:'164.5px',height:'164.5px'});
-            root.querySelector('.halo-glow').style.display='block';ring.style.strokeWidth='5';""")
+            window.pump=bass=>player.levels([bass,50,60],Array.from({length:128},(_,i)=>i%7===0?43:0));""")
         for name,scale,bass in [('0',.997,False), ('2',1.002,True), ('',1.008,False)]:
             play(name)
             if name: loaded()
-            x,y,r,b=js(f"""ring.style.transform='scale({scale})';ring.toggleAttribute('data-bass',{json.dumps(bass)});
+            x,y,r,b=js(f"""ring.style.transform='scale({scale})';clearInterval(window.pulse);window.pulse=setInterval(()=>pump({90 if bass else 20}),32);
               (()=>{{const r=ring.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom].map(Math.round)}})()""")
             with Image.open(io.BytesIO(base64.b64decode(cdp('Page.captureScreenshot')['data']))) as shot:
                 im=shot.convert('RGB'); bg=im.getpixel((0,0))
                 for box in [(x-2,y-2,r+2,y+3),(x-2,b-3,r+2,b+2),(x-2,y,x+3,b),(r-3,y,r+2,b)]:
                     assert im.crop(box).getextrema()==tuple((c,c) for c in bg), (name,scale,box)
-                assert im.getpixel(((x+r)//2,(y+b)//2))!=bg, 'stroke should still be visible'
+                assert im.crop((x+4,y+4,r-4,b-4)).getextrema()!=tuple((c,c) for c in bg), 'strokes should still be visible'
         print('PASS: clean square bounds during scale/bass changes; same-page switches, slow/stale cover, cache hits, whole-image average and cross-origin contrast:',samples)
     finally:
         gate.set()
