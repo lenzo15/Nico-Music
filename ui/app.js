@@ -241,25 +241,32 @@ function previewMix(mix) {
   for (let i=2; lists.items.some(l => l.name === name); i++) {
     const suffix = ` (${i})`; name = mix.name.trim().slice(0,60-suffix.length) + suffix;
   }
+  $("mixCurrent").dataset.page = page;
+  $("mixCurrent").textContent = currentList() ? "导入当前歌单" : page === "likes" ? "加入我喜欢的" : "仅加入音乐库";
+  $("mixCurrent").title = currentList() ? `导入到「${currentList().name}」` : $("mixCurrent").textContent;
   $("mixName").value = name; $("mixName").setCustomValidity("");
   $("mixSummary").textContent = `共 ${mix.count} 首，不会重复加入音乐库。` +
     (mix.unavailable ? `其中 ${mix.unavailable} 首需要相应音源插件，装回后可见。` : "");
   if (!$("mixDialog").open) $("mixDialog").showModal();
 }
 $("mixDialog").addEventListener("close", () => {
+  if ($("mixDialog").open) return; // A newer file preview opened before the queued close event.
   if (mixToken !== null) send("mix-cancel " + mixToken);
   mixToken = null;
 });
 $("mixName").oninput = () => $("mixName").setCustomValidity("");
-$("mixForm").onsubmit = e => {
-  e.preventDefault();
+$("mixCurrent").onclick = () => submitMix($("mixCurrent").dataset.page);
+$("mixForm").onsubmit = e => { e.preventDefault(); submitMix(""); };
+function submitMix(target) {
   const name = $("mixName").value.trim();
-  if (!name || lists.items.some(l=>l.name===name)) {
+  if (!target && (!name || lists.items.some(l=>l.name===name))) {
     $("mixName").setCustomValidity("请输入不重复的歌单名称"); $("mixName").reportValidity(); return;
   }
+  if (target && !["library", "likes"].includes(target) && !lists.find(target)) return toast("目标歌单已删除");
   if (mixToken === null || !send("mix-import " + mixToken)) return;
-  pendingImport = {mixName:name}; mixToken = null; $("mixDialog").close();
-};
+  pendingImport = target ? {page: target, priorOrder: trackOrder.apply(target, defaultPageOrder(target), tracks).map(i => tracks[i].url)} : {mixName:name};
+  mixToken = null; $("mixDialog").close();
+}
 async function reviewCollection(preview) {
   const request = pendingImport;
   let accepted = false;
@@ -456,9 +463,9 @@ const librarySize = () => tracks.length - hiddenTrackCount;
 function pageOrder() {
   return trackOrder.apply(page, defaultPageOrder().filter(i => !tracks[i].hidden), tracks);
 }
-function defaultPageOrder() {
-  const list = currentList();
-  const members = list ? new Set(list.urls) : page === "likes" ? fav : null;
+function defaultPageOrder(scope = page) {
+  const list = lists?.find(scope);
+  const members = list ? new Set(list.urls) : scope === "likes" ? fav : null;
   // The native library appends on first import. Keep its indices intact for playback/removal.
   const order = [];
   for (let i = tracks.length - 1; i >= 0; --i)
@@ -853,7 +860,7 @@ bridge?.addEventListener("message", (e) => {
     } else toast(msg.error); // An unrelated playback error is not an import response.
   }
   if (msg.imported && pendingImport) {
-    const {page: target, url, mixName} = pendingImport;
+    const {page: target, url, mixName, priorOrder} = pendingImport;
     const urls = msg.importedUrls || [url];
     pendingImport = null;
     let notice = "已加入音乐库";
@@ -870,6 +877,14 @@ bridge?.addEventListener("message", (e) => {
         rowSignature = "";
         notice = "已加入歌单";
       } catch { notice = "已加入音乐库，但无法保存到歌单"; }
+    }
+    if (priorOrder && notice && !notice.includes("但无法")) {
+      // Append only new members, in file order; keep manual ordering and hidden tracks.
+      const merged = new Set([...priorOrder, ...urls]);
+      if (merged.size > priorOrder.length) {
+        try { trackOrder.save(target, [...merged]); rowSignature = ""; }
+        catch { notice = "已导入，但无法保存曲目顺序"; }
+      }
     }
     if ($("addDialog").open) {
       $("addDialog").close();

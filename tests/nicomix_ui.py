@@ -60,6 +60,23 @@ def exercise(exe, root, profile, proc, js, cdp, until):
     js('editHistory.undo()'); wait("!lists.items.length && tracks.length===3"); js('editHistory.redo()'); wait('lists.items.length===1 && tracks.length===4');
     preview(fixture); assert js("$('mixName').value==='分享:试听 (2)'"); js("$('mixDialog').close();select('likes');updateLikes([tracks[1].url],true)")
     assert [s['title'] for s in export('我喜欢的')['tracks']]==['B']
+    def merge():
+        preview(fixture)
+        assert js("!$('mixForm').querySelector('select') && $('mixCurrent').dataset.page===page")
+        js("$('mixName').value='';$('mixCurrent').click()")  # existing destination ignores new-list name
+        try: wait("!pendingImport && !$('mixDialog').open")
+        except AssertionError as e:
+            raise AssertionError(js("[page,mixToken,pendingImport,pendingMutation,editHistory.busy,$('mixDialog').open,$('mixCurrent').dataset.page,$('toast').textContent]")) from e
+    merge()  # B was already liked; preserve it and add the other two only once.
+    assert js("page==='likes' && fav.size===3 && lists.items.length===1")
+    js("editHistory.undo()"); wait("fav.size===1")
+    js("select('library')"); merge()
+    assert js("page==='library' && lists.items.length===1 && fav.size===1")
+    js("window.mergeId=lists.create('目标',[tracks[0].url,tracks[1].url]);trackOrder.save(mergeId,[tracks[1].url,tracks[0].url]);select(mergeId)")
+    merge(); merge()  # second pass is a no-op
+    assert js("page===mergeId && lists.items.length===2 && currentList().urls.length===4 && pageOrder().map(i=>tracks[i].name).join(',')==='B,C,A'")
+    js("editHistory.undo()"); wait("currentList().urls.length===2")
+    js("editHistory.redo()"); wait("currentList().urls.length===4")
     before=(profile/'library.tsv').read_bytes()
     fixture.write_text(json.dumps(dict(doc,tracks=[{'url':'file:///C:/private.wav'}])),encoding='utf8'); js('send("mix-open " + '+json.dumps(fixture.as_uri())+')'); wait("$('toast').textContent.includes('非 HTTP')")
     assert not js("$('mixDialog').open") and (profile/'library.tsv').read_bytes()==before

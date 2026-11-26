@@ -951,9 +951,9 @@ dialog label {
   font-weight: 600;
   margin-top: 16px;
 }
-#addForm { display: flex; flex-direction: column; max-height: calc(100dvh - 36px); }
+:is(#addForm, #mixForm) { display: flex; flex-direction: column; max-height: calc(100dvh - 36px); }
 .importFields { margin-inline: var(--sheet-inset); padding: 6px; overflow-y: auto; scrollbar-width: thin; }
-#addForm .actions { flex: none; margin: 16px var(--sheet-inset) var(--sheet-inset); }
+:is(#addForm, #mixForm) .actions { flex: none; margin: 16px var(--sheet-inset) var(--sheet-inset); }
 #importStatus { margin: 12px 0 0; }
 #localDrop { width: 100%; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
 #localDrop small { margin-left: 6px; color: var(--muted); }
@@ -962,6 +962,7 @@ dialog label small {
   color: #999;
   font-weight: 400;
 }
+#mixSummary { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 dialog input {
   display: block;
   margin-top: 7px;

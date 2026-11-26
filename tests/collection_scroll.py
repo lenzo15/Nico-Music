@@ -165,8 +165,8 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                   const fits=d.scrollHeight <= d.clientHeight && d.scrollWidth <= d.clientWidth;
                   d.close(); return fits; }})()"""), (width, height, dialog)
             chrome = []
-            for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), ('viewQueue', 'queueDialog')]:
-                js(f"$('{opener}').click()")
+            for opener, dialog in [('settingsButton', 'settings'), ('topAdd', 'addDialog'), (None, 'mixDialog'), ('viewQueue', 'queueDialog')]:
+                js(f"$('{opener}').click()" if opener else "previewMix({name:'试听',count:3,token:'1'})")
                 if dialog != 'settings':
                     assert js(f"""(() => {{ const panel = $('{dialog}').querySelector('.importFields, .queueCard');
                       const s = getComputedStyle(panel);
@@ -177,8 +177,8 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
                     d.getBoundingClientRect().right - b.getBoundingClientRect().right]; }})()"""))
                 assert js(f"getComputedStyle($('{dialog}').querySelector('h2')).fontSize === getComputedStyle($('heading')).fontSize")
                 js(f"$('{dialog}').querySelector('.close').click()")
-            assert chrome[0] == chrome[1] == chrome[2], chrome
-            print(f'OK: {width}x{height}, compact dialogs fit and all three sheets share header and surface styles')
+            assert all(style == chrome[0] for style in chrome), chrome
+            print(f'OK: {width}x{height}, compact dialogs fit and all four sheets share header and surface styles')
         js("select('library'); $('rows').focus()")
         cdp('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})
         cdp('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'PageDown', 'code': 'PageDown', 'windowsVirtualKeyCode': 34})

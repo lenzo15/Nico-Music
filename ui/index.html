@@ -217,13 +217,20 @@
         <button type="button" id="confirmDeleteList">删除</button>
       </div>
     </dialog>
-    <dialog id="mixDialog" aria-labelledby="mixTitle">
+    <dialog id="mixDialog" class="sheet" aria-labelledby="mixTitle" aria-describedby="mixSummary">
       <form id="mixForm">
-        <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
-        <h2 id="mixTitle">导入分享歌单</h2>
-        <p id="mixSummary"></p>
-        <label>新歌单名称<input id="mixName" required maxlength="60"></label>
-        <div class="actions"><button class="primary" type="submit">创建歌单</button></div>
+        <header class="sheetHeader">
+          <h2 id="mixTitle">导入分享歌单</h2>
+          <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
+        </header>
+        <div class="importFields">
+          <p id="mixSummary"></p>
+          <label>新歌单名称<input id="mixName" required maxlength="60"></label>
+        </div>
+        <div class="actions">
+          <button id="mixCurrent" class="subtle" type="button">导入当前歌单</button>
+          <button class="primary" type="submit">创建歌单</button>
+        </div>
       </form>
     </dialog>
     <dialog id="listDialog" aria-labelledby="listTitle">
