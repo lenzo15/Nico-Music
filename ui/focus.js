@@ -66,7 +66,10 @@ function createFocusView() {
     labelPicker();
     if (!panel.hidden && (selected !== previous || revisions.get(selected) !== oldRevision)) mount();
   }
+  let exitTimer = 0;
+  function cancelExit() { clearTimeout(exitTimer); exitTimer = 0; }
   function stop() {
+    cancelExit();
     ++generation;
     lifecycle?.abort(); lifecycle = null;
     if (listening) { listening = false; send("levels off"); }
@@ -120,7 +123,7 @@ function createFocusView() {
       if (generation !== token) return;
       root.replaceChildren(); sheet.media = "all"; document.body.dataset.focusPreset = id;
       lifecycle = new AbortController();
-      instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => cover(el, current()),
+      instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => { const t = current(); if (t) cover(el, t); },
         requestLevels(on, options) {
           if (generation !== token) return;
           const want = !!on && !document.hidden && !reduceMotion.matches && !!state.playing && !state.paused;
@@ -135,12 +138,19 @@ function createFocusView() {
   function update() {
     const t = current(); trigger.disabled = !t;
     if (panel.hidden) return;
-    if (!t) return close();
-    const playing = !!state.playing && !state.paused;
+    const playing = !!t && !!state.playing && !state.paused;
     if (listening && (!playing || document.hidden || reduceMotion.matches)) {
       listening = false; send("levels off");
     }
     panel.classList.toggle("playing", playing);
+    if (!t) {
+      // At end of queue there is no current cover to render. Keep the last scene
+      // mounted just long enough to finish its playback-state transition.
+      const ms = Number(instance?.exitFadeMs);
+      if (state.index >= 0 || !(ms > 0)) return close();
+      if (exitTimer) return;
+      exitTimer = setTimeout(close, Math.min(ms, 2000));
+    } else if (exitTimer) cancelExit();
     if (!instance) { if (root.firstChild) root.firstChild.textContent = trackLabel.textContent; return; }
     try { instance.update({title: trackLabel.textContent, playing, progress: state.duration > 0 ? Math.max(0, Math.min(1, state.elapsed/state.duration)) : 0}); }
     catch (error) { failed(error); }

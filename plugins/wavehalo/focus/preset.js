@@ -6,6 +6,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     bass: 34, mid: 27, high: 46,         // 低、中、高频振幅
     ring: 65, width: 100, inward: 100,   // 峰间响应、尖峰宽度、向内延伸（%）
     attack: 12, release: 85,             // 光条上升 / 回落时间（ms）
+    fadeInMs: 320, fadeOutMs: 450,      // 开始 / 暂停或结束时光条淡入淡出（ms）
     colorAt: 72, brightenMs: 150,        // 低音提亮阈值（%）、提亮时间（ms）
   };
 
@@ -19,6 +20,8 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   const art = root.querySelector(".halo-art"), path = root.querySelector(".halo-ring path");
   const ring = root.querySelector(".halo-ring");
   ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
+  ring.style.setProperty("--halo-fade-in", `${tuning.fadeInMs}ms`);
+  ring.style.setProperty("--halo-fade-out", `${tuning.fadeOutMs}ms`);
   let accented = false;
   function updateColor(bass) {
     // Absolute meter level with a dead band, independent of bar gain and smoothing.
@@ -79,12 +82,13 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     active = want;
     requestLevels(want, {spectrum: true});
     if (!want) {
-      cancelAnimationFrame(frame); frame = last = 0;
-      energy.fill(0); raw.fill(0); target.fill(0); bassLevel = 0; updateColor(0); draw();
+      // Let the existing render loop release the last peaks during the fade.
+      target.fill(0); bassLevel = 0; updateColor(0);
     }
   }
   draw();
   return {
+    exitFadeMs: tuning.fadeOutMs,
     update({playing}) {
       renderCover(wash); renderCover(art);
       listen(playing && !document.hidden && !reduceMotion.matches && !unsupported);
@@ -104,6 +108,6 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
       mapSpectrum(); updateColor(bassLevel);
       if (!frame && (bassLevel || target.some(Boolean))) frame = requestAnimationFrame(tick);
     },
-    dispose() { listen(false); }
+    dispose() { listen(false); cancelAnimationFrame(frame); }
   };
 };

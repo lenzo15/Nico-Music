@@ -29,6 +29,9 @@ body[data-focus-preset="wavehalo"] #focusBackground::after {
 .halo-ring[data-bass] { stroke-opacity: 1;
   filter: drop-shadow(0 0 4px #fffe) drop-shadow(0 0 6px #fff6);
   transition-duration: var(--halo-brighten-time, 150ms); }
+.halo-ring path { opacity: 0; transition: opacity var(--halo-fade-out) ease-out; }
+#focusView.playing .halo-ring path { opacity: 1; transition-duration: var(--halo-fade-in); }
+@starting-style { #focusView.playing .halo-ring path { opacity: 0; } }
 @keyframes halo-breathe { from { opacity: .82; transform: scale(.997); } to { opacity: 1; transform: scale(1.008); } }
 
 /* Keep the host's transport and preset picker usable against both pale and dark covers. */
