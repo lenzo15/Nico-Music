@@ -15,6 +15,7 @@ const mount = () => document.currentScript.mountFocus({root, background: {append
   renderCover() {}, requestLevels(on, options) { if (on) assert.equal(options.spectrum, true); }, reduceMotion: {matches: false} });
 const preset = mount();
 assert.doesNotMatch(root.innerHTML, /<(?:button|details|input)\b/i);
+assert.equal(ringStyle.get('--halo-boost'), '1');
 assert.equal(ringStyle.get('--halo-brighten-time'), '150ms');
 const rest = path;
 preset.update({playing: true});

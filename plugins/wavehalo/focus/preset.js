@@ -7,6 +7,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
     ring: 65, width: 100, inward: 100,   // 峰间响应、尖峰宽度、向内延伸（%）
     attack: 12, release: 85,             // 光条上升 / 回落时间（ms）
     fadeInMs: 320, fadeOutMs: 450,      // 开始 / 暂停或结束时光条淡入淡出（ms）
+    bassBrightness: 100,                 // 低音提亮强度（0–200%，100 为原效果，0 关闭）
     colorAt: 72, brightenMs: 150,        // 低音提亮阈值（%）、提亮时间（ms）
   };
 
@@ -19,6 +20,7 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
   </div>`;
   const art = root.querySelector(".halo-art"), path = root.querySelector(".halo-ring path");
   const ring = root.querySelector(".halo-ring");
+  ring.style.setProperty("--halo-boost", String(Math.max(0, Math.min(200, tuning.bassBrightness)) / 100));
   ring.style.setProperty("--halo-brighten-time", `${tuning.brightenMs}ms`);
   ring.style.setProperty("--halo-fade-in", `${tuning.fadeInMs}ms`);
   ring.style.setProperty("--halo-fade-out", `${tuning.fadeOutMs}ms`);

@@ -26,8 +26,9 @@ body[data-focus-preset="wavehalo"] #focusBackground::after {
   stroke-width: 3.4; stroke-linecap: square; filter: drop-shadow(0 0 3px #fffc);
   animation: halo-breathe 4.8s ease-in-out infinite alternate;
   transition: stroke-opacity 280ms ease-out, filter 280ms ease-out; }
-.halo-ring[data-bass] { stroke-opacity: 1;
-  filter: drop-shadow(0 0 4px #fffe) drop-shadow(0 0 6px #fff6);
+.halo-ring[data-bass] { stroke-opacity: calc(.88 + .12 * var(--halo-boost));
+  filter: drop-shadow(0 0 calc(3px + 1px * var(--halo-boost)) rgb(255 255 255 / calc(.8 + .1333 * var(--halo-boost))))
+          drop-shadow(0 0 calc(6px * var(--halo-boost)) rgb(255 255 255 / calc(.4 * var(--halo-boost))));
   transition-duration: var(--halo-brighten-time, 150ms); }
 .halo-ring path { opacity: 0; transition: opacity var(--halo-fade-out) ease-out; }
 #focusView.playing .halo-ring path { opacity: 1; transition-duration: var(--halo-fade-in); }
