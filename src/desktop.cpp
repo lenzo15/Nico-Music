@@ -1,6 +1,7 @@
 #include "station.hpp"
 #include "library_history.hpp"
 #include "nicomix.hpp"
+#include "nicomix_association.hpp"
 #include <ole2.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -1062,6 +1063,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 } // namespace
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    const bool registerOnly = argv && argc == 2 && !wcscmp(argv[1], L"--register-nicomix");
+    if (argv && argc==2 && nicomix::isFile(argv[1])) {
+        std::error_code ec; initialMix = fs::absolute(argv[1],ec); if (ec) initialMix.clear();
+    }
+    LocalFree(argv);
+    if (registerOnly) return nicomix::registerAssociation(appExecutable().native()) ? 0 : 1;
     HANDLE raw = CreateEventW(nullptr, FALSE, FALSE, instanceEvent);
     const bool alreadyRunning = GetLastError() == ERROR_ALREADY_EXISTS;
     std::unique_ptr<void, decltype(&CloseHandle)> activation(raw, CloseHandle);
@@ -1069,11 +1077,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, L"无法检查播放器是否已运行。", L"NicoMusic", MB_OK | MB_ICONERROR);
         return 1;
     }
-    int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (argv && argc==2 && nicomix::isFile(argv[1])) {
-        std::error_code ec; initialMix = fs::absolute(argv[1],ec); if (ec) initialMix.clear();
-    }
-    LocalFree(argv);
     if (alreadyRunning) {
         if (!initialMix.empty()) {
             HWND dest{};
@@ -1095,6 +1098,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     try {
         if (!fs::exists(appDir() / L"ui/index.html"))
             throw std::runtime_error("缺少 ui 目录，请将界面资源放在程序旁边。");
+        if (envPath(L"NICOMUSIC_HOME").empty()) // Isolated profiles must not claim shell integration.
+            nicomix::registerAssociation(appExecutable().native());
         WNDCLASSW wc{};
         wc.hInstance = instance;
         wc.lpszClassName = windowClass;

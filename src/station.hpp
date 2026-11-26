@@ -25,14 +25,18 @@ struct Track
     std::optional<string> thumbnail; // nullopt: not checked; empty: no cover
 };
 
-static fs::path appDir()
+static fs::path appExecutable()
 {
     std::wstring buf(32768, L'\0');
     auto n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (!n || n >= buf.size())
         throw std::runtime_error("无法定位程序目录");
     buf.resize(n);
-    return fs::path(buf).parent_path();
+    return fs::path(buf);
+}
+static fs::path appDir()
+{
+    return appExecutable().parent_path();
 }
 static fs::path envPath(const wchar_t *key)
 {
