@@ -25,8 +25,9 @@ document.currentScript.mountFocus = ({root, background, renderCover, requestLeve
 
   function draw() {
     const d = bins.map(({x,y,base,bass,mid,air,ripple}) => {
-      const tip = radius + base + ripple * (bass * energy[0] + mid * energy[1] + air * energy[2]);
-      return `M${(x * radius).toFixed(2)},${(y * radius).toFixed(2)}L${(x * tip).toFixed(2)},${(y * tip).toFixed(2)}`;
+      const pulse = ripple * (bass * energy[0] + mid * energy[1] + air * energy[2]);
+      const inner = radius - pulse, outer = radius + base + pulse;
+      return `M${(x * inner).toFixed(2)},${(y * inner).toFixed(2)}L${(x * outer).toFixed(2)},${(y * outer).toFixed(2)}`;
     });
     path.setAttribute("d", d.join(""));
   }
