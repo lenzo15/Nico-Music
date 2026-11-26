@@ -108,6 +108,10 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         def js(expr):
             return cdp('Runtime.evaluate', {'expression': expr, 'returnByValue': True})['result'].get('value')
         until(lambda: js('document.querySelectorAll(".row").length===3'))
+        if '--nicomix' in sys.argv:
+            from nicomix_ui import exercise
+            exercise(exe, root, profile, proc, js, cdp, until)
+            sys.exit(0)
         if '--spectrum' in sys.argv:
             js("""window.peaks=new Set();chrome.webview.addEventListener('message',({data})=>{
                 if(data.spectrum?.length===128) peaks.add(data.spectrum.indexOf(Math.max(...data.spectrum)));

@@ -43,11 +43,11 @@ function createEditHistory({storage, snapshot, restore, applyNative, notify, cha
       catch { notify("无法保存操作提示设置"); return false; }
       notices = enabled; changed(api); return true;
     },
-    record({label, nativeId = "", before, after = snapshot()}) {
+    record({label, nativeId = "", createdList, before, after = snapshot()}) {
       const patch = membershipPatch(before, after);
       const different = [patch.likes, ...patch.lists].some(diff => diff.added.length || diff.removed.length);
       if (nativeId || different) {
-        undo.push({label, nativeId, patch});
+        undo.push({label, nativeId, patch, created: after.lists.find(l => l.id === createdList)});
         if (undo.length > 50) undo.shift();
         redo.length = 0;
         changed(api);
@@ -68,7 +68,20 @@ function createEditHistory({storage, snapshot, restore, applyNative, notify, cha
     let nativeApplied = false;
     try {
       if (entry.nativeId) { await applyNative(entry.nativeId, direction); nativeApplied = true; }
-      restore(applyMembershipPatch(snapshot(), entry.patch, back));
+      const next = applyMembershipPatch(snapshot(), entry.patch, back);
+      let removed = false;
+      if (entry.created) {
+        const {id, name, urls} = entry.created, list = next.lists.find(l => l.id === id);
+        // Never delete unrelated songs subsequently added to the imported playlist.
+        if (back && list && list.name === name && !list.urls.length) {
+          next.lists = next.lists.filter(l => l.id !== id); removed = true;
+        } else if (!back && entry.removed && !list) {
+          if (next.lists.some(l => l.name === name)) throw Error("已有同名歌单，无法重做导入");
+          next.lists.push({id, name, urls: [...urls]});
+        }
+      }
+      restore(next);
+      if (back) entry.removed = removed;
       from.pop(); to.push(entry);
       announce(`已${back ? "撤销" : "重做"}：${entry.label}`, back ? "redo" : "undo");
       return true;

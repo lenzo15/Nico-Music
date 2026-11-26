@@ -13,6 +13,7 @@ const paths = {
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.3"/><path d="M6 12a6 6 0 0 1 6-6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>',
   settings: '<circle cx="12" cy="12.5" r="3"/><path d="m10 3-.5 2.5-2.2 1.3-2.4-.8-2 3.5 1.9 1.7v2.6l-1.9 1.7 2 3.5 2.4-.8 2.2 1.3L10 22h4l.5-2.5 2.2-1.3 2.4.8 2-3.5-1.9-1.7v-2.6l1.9-1.7-2-3.5-2.4.8-2.2-1.3L14 3Z"/>',
+  share: '<path d="M12 15V3m-4 4 4-4 4 4M7 10H5v11h14V10h-2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   checklist: '<path d="m3 7 2 2 4-5m3 3h9M3 16l2 2 4-5m3 3h9"/>',
   play: '<path d="m7 4 13 8-13 8z" fill="currentColor"/>',
@@ -58,7 +59,7 @@ try {
 } catch {}
 let editHistory = null, pendingMutation = false, nativeHistoryRequest = null;
 function send(message) {
-  const mutation = /^(add|start|remove|removeurls)\s/.test(message);
+  const mutation = /^(add|start|remove|removeurls|mix-import)\s/.test(message);
   if (mutation && (editHistory?.busy || pendingMutation)) {
     toast("请等待当前操作完成"); return false;
   }
@@ -115,7 +116,8 @@ function restoreMembership(next) {
     throw Error("无法保存歌单或收藏，操作未完成");
   }
   fav = new Set(next.likes);
-  rowSignature = ""; refreshListNav(); sync();
+  rowSignature = ""; refreshListNav();
+  if (page !== "library" && page !== "likes" && !currentList()) select("library"); else sync();
 }
 function refreshListNav() {
   const nav = $("listNav");
@@ -219,7 +221,45 @@ function select(p) {
 document
   .querySelectorAll("[data-page]")
   .forEach((b) => (b.onclick = () => select(b.dataset.page)));
-let pendingImport = null;
+let pendingImport = null, mixToken = null;
+$("shareMix").onclick = () => {
+  const order = trackOrder.apply(page, defaultPageOrder(), tracks);
+  const shared = order.filter(i => /^https?:\/\//i.test(tracks[i].url));
+  if (!shared.length) return toast(order.length ? "此列表只有本地文件，不能分享本机路径" : "没有可分享的曲目");
+  if (shared.length > 10000) return toast("每个分享歌单最多 10000 首");
+  if (shared.length < order.length) toast(`已跳过 ${order.length - shared.length} 首本地歌曲`);
+  const name = currentList()?.name || (page === "likes" ? "我喜欢的" : "全部音乐");
+  send(`mix-export ${name.replace(/[\t\r\n]/g, " ")}\t${shared.join(" ")}`);
+};
+function previewMix(mix) {
+  if (!lists || pendingImport || pendingMutation || editHistory?.busy ||
+      document.querySelector("dialog[open]:not(#addDialog):not(#mixDialog)")) {
+    send("mix-cancel " + mix.token); toast("请先完成当前操作再导入歌单"); return;
+  }
+  mixToken = mix.token;
+  let name = mix.name.trim();
+  for (let i=2; lists.items.some(l => l.name === name); i++) {
+    const suffix = ` (${i})`; name = mix.name.trim().slice(0,60-suffix.length) + suffix;
+  }
+  $("mixName").value = name; $("mixName").setCustomValidity("");
+  $("mixSummary").textContent = `共 ${mix.count} 首，不会重复加入音乐库。` +
+    (mix.unavailable ? `其中 ${mix.unavailable} 首需要相应音源插件，装回后可见。` : "");
+  if (!$("mixDialog").open) $("mixDialog").showModal();
+}
+$("mixDialog").addEventListener("close", () => {
+  if (mixToken !== null) send("mix-cancel " + mixToken);
+  mixToken = null;
+});
+$("mixName").oninput = () => $("mixName").setCustomValidity("");
+$("mixForm").onsubmit = e => {
+  e.preventDefault();
+  const name = $("mixName").value.trim();
+  if (!name || lists.items.some(l=>l.name===name)) {
+    $("mixName").setCustomValidity("请输入不重复的歌单名称"); $("mixName").reportValidity(); return;
+  }
+  if (mixToken === null || !send("mix-import " + mixToken)) return;
+  pendingImport = {mixName:name}; mixToken = null; $("mixDialog").close();
+};
 async function reviewCollection(preview) {
   const request = pendingImport;
   let accepted = false;
@@ -265,7 +305,7 @@ document.querySelectorAll("dialog").forEach(
     }),
 );
 function fileSelection(files) {
-  if (files?.length !== 1) return toast("请一次选择一首音乐");
+  if (files?.length !== 1) return toast("请一次选择一个文件");
   try { bridge.postMessageWithAdditionalObjects("selectedFile", [files[0]]); }
   catch { toast("无法读取文件，请粘贴本机文件的完整路径"); }
 }
@@ -281,6 +321,17 @@ addForm.ondrop = e => {
   if (!e.dataTransfer.types.includes("Files")) return;
   e.preventDefault(); addForm.classList.remove("dragging"); fileSelection(e.dataTransfer.files);
 };
+// Accept a shared playlist on the main window, without hijacking audio or row reordering.
+document.addEventListener("dragover", e => {
+  if (!document.querySelector("dialog[open]") && e.dataTransfer.types.includes("Files")) e.preventDefault();
+});
+document.addEventListener("drop", e => {
+  if (document.querySelector("dialog[open]") || !e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  const files = e.dataTransfer.files;
+  if (files.length===1 && /\.nicomix$/i.test(files[0].name)) fileSelection(files);
+  else toast("请拖入一个 .nicomix 歌单，或使用添加音乐");
+});
 function localURI(input) {
   let path = input.replace(/^"(.*)"$/, "$1");
   if (/^file:/i.test(path)) {
@@ -298,6 +349,7 @@ $("addForm").onsubmit = (e) => {
   let url = $("url").value.trim();
   try {
     const local = localURI(url);
+    if (local && /\.nicomix$/i.test(new URL(local).pathname)) { send("mix-open " + local); return; }
     if (local) url = local;
     const u = new URL(url);
     if (!local && (
@@ -751,6 +803,9 @@ const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridg
   storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
+  if (msg.mixPreview) { previewMix(msg.mixPreview); return; }
+  if (msg.mixNotice) { toast(msg.mixNotice); return; }
+  let createdList;
   const editBefore = msg.libraryEdit ? membershipSnapshot() : null;
   if (msg.libraryEdit || msg.imported || msg.importFailed || msg.error && !msg.collectionPending) pendingMutation = false;
   if (updateChecker.message(msg)) return;
@@ -798,11 +853,16 @@ bridge?.addEventListener("message", (e) => {
     } else toast(msg.error); // An unrelated playback error is not an import response.
   }
   if (msg.imported && pendingImport) {
-    const {page: target, url} = pendingImport;
+    const {page: target, url, mixName} = pendingImport;
     const urls = msg.importedUrls || [url];
     pendingImport = null;
     let notice = "已加入音乐库";
-    if (target === "likes") {
+    if (mixName) {
+      try {
+        createdList = lists.create(mixName, urls); trackOrder.save(createdList, urls);
+        refreshListNav(); select(createdList); notice = "已导入分享歌单";
+      } catch { notice = "已加入音乐库，但无法完整保存歌单或排序"; }
+    } else if (target === "likes") {
       notice = updateLikes(urls, true) ? "已加入我喜欢的" : "";
     } else if (target !== "library" && lists?.find(target)) {
       try {
@@ -826,7 +886,7 @@ bridge?.addEventListener("message", (e) => {
     const after = membershipSnapshot(), valid = new Set(tracks.map(track => track.url));
     after.likes = after.likes.filter(url => valid.has(url));
     after.lists = after.lists.map(list => ({...list, urls: list.urls.filter(url => valid.has(url))}));
-    editHistory.record({label: `${label}（${edit.count} 首）`, nativeId: edit.id, before: editBefore, after});
+    editHistory.record({label: `${label}（${edit.count} 首）`, nativeId: edit.id, createdList, before: editBefore, after});
     if (msg.error) toast(msg.error); // Error messages are never suppressed by the preference.
   }
   sync();

@@ -68,6 +68,7 @@
         <div class="topbar">
           <h1 id="heading">全部音乐</h1>
           <button id="deleteList" class="icon" aria-label="删除歌单" aria-haspopup="dialog" aria-controls="deleteListDialog" hidden><i data-icon="trash"></i></button>
+          <button id="shareMix" class="icon" title="分享歌单" aria-label="分享歌单"><i data-icon="share"></i></button>
           <button id="topAdd" class="icon addLink" aria-label="添加链接">
             <i data-icon="plus"></i>
           </button>
@@ -216,6 +217,15 @@
         <button type="button" id="confirmDeleteList">删除</button>
       </div>
     </dialog>
+    <dialog id="mixDialog" aria-labelledby="mixTitle">
+      <form id="mixForm">
+        <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
+        <h2 id="mixTitle">导入分享歌单</h2>
+        <p id="mixSummary"></p>
+        <label>新歌单名称<input id="mixName" required maxlength="60"></label>
+        <div class="actions"><button class="primary" type="submit">创建歌单</button></div>
+      </form>
+    </dialog>
     <dialog id="listDialog" aria-labelledby="listTitle">
       <form id="listForm">
         <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
@@ -240,8 +250,8 @@
           <button type="button" class="close icon" aria-label="关闭"><i data-icon="close"></i></button>
         </header>
         <div class="importFields">
-          <button type="button" id="localDrop" title="选择本地音频文件">选择文件 <small>或将一首音乐拖到这里</small></button>
-          <input type="file" id="localFile" accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
+          <button type="button" id="localDrop" title="选择音乐或 .nicomix 歌单">选择文件 <small>或将音乐、.nicomix 歌单拖到这里</small></button>
+          <input type="file" id="localFile" accept=".nicomix,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.oga,.aiff,.alac,.wma,.webm,.mp4" hidden />
           <p id="importStatus" role="status" hidden>正在读取合集，请稍候…</p>
           <label
             >链接或本地路径<input

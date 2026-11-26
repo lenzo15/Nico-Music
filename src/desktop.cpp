@@ -1,5 +1,6 @@
 #include "station.hpp"
 #include "library_history.hpp"
+#include "nicomix.hpp"
 #include <ole2.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -286,6 +287,46 @@ void updatePromptResult(const string& phase, const string& error = {}) {
 string collectionMode, collectionSource;
 std::vector<Track> collectionPreview;
 uint64_t collectionId = 0;
+std::optional<nicomix::Mix> mixPreview, mixExport;
+uint64_t mixToken = 0;
+fs::path initialMix;
+constexpr UINT exportMixMessage = WM_APP + 3, openMixMessage = WM_APP + 4;
+void mixMessage(const string& key, const string& value) {
+    view->PostWebMessageAsJson(wide("{" + quotedJson(key) + ":" + quotedJson(value) + "}").c_str());
+}
+void openMix(const fs::path& path) {
+    try {
+        if (!collectionMode.empty()) throw std::runtime_error("请先完成当前合集导入");
+        // Do not open network shares, devices or alternate streams supplied by another process.
+        const auto p = path.native();
+        if (p.size()<4 || !iswalpha(p[0]) || p[1]!=L':' || (p[2]!=L'\\' && p[2]!=L'/') || p.find(L':',2)!=p.npos)
+            throw std::runtime_error("请选择本机磁盘上的 .nicomix 文件");
+        auto mix = nicomix::read(path);
+        size_t unavailable = 0;
+        for (const auto& song : mix.songs) if (!station->providers().listed(song.url)) ++unavailable;
+        auto json = "{\"mixPreview\":{\"token\":" + quotedJson(std::to_string(++mixToken)) + ",\"name\":" + quotedJson(mix.name) +
+            ",\"count\":" + std::to_string(mix.songs.size()) + ",\"unavailable\":" + std::to_string(unavailable) + "}}";
+        mixPreview = std::move(mix); view->PostWebMessageAsJson(wide(json).c_str());
+    } catch (const std::exception& e) { mixMessage("mixNotice", e.what()); }
+}
+void chooseMixDirectory() {
+    if (!mixExport) return;
+    auto mix = std::move(*mixExport); mixExport.reset();
+    try {
+        ComPtr<IFileOpenDialog> dialog; FILEOPENDIALOGOPTIONS opts{};
+        if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) ||
+            FAILED(dialog->GetOptions(&opts)) || FAILED(dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR)))
+            throw std::runtime_error("无法打开目录选择器");
+        dialog->SetTitle(L"选择歌单导出目录");
+        auto hr = dialog->Show(window); if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return;
+        ComPtr<IShellItem> folder; PWSTR raw{};
+        if (FAILED(hr) || FAILED(dialog->GetResult(&folder)) || FAILED(folder->GetDisplayName(SIGDN_FILESYSPATH, &raw)))
+            throw std::runtime_error("无法取得导出目录");
+        std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned(raw,CoTaskMemFree);
+        auto file = nicomix::write(fs::path(raw), mix);
+        mixMessage("mixNotice", "已导出：" + file.filename().u8string());
+    } catch (const std::exception& e) { mixMessage("mixNotice", e.what()); }
+}
 LibraryHistory libraryHistory;
 string pendingLibraryEdit, pendingHistoryResult;
 void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false,
@@ -407,15 +448,18 @@ void selectedFile(ICoreWebView2WebMessageReceivedEventArgs *args) {
         SUCCEEDED(ext->get_AdditionalObjects(&files)) && files &&
         SUCCEEDED(files->GetValueAtIndex(0, &item)) && item && SUCCEEDED(item.As(&file)) &&
         SUCCEEDED(file->get_Path(&path)) && path && *path) {
-        auto json = wide("{\"localPath\":" + quotedJson(utf8(path)) + "}");
-        view->PostWebMessageAsJson(json.c_str());
+        if (nicomix::isFile(path)) openMix(path);
+        else {
+            auto json = wide("{\"localPath\":" + quotedJson(utf8(path)) + "}");
+            view->PostWebMessageAsJson(json.c_str());
+        }
     } else {
         view->PostWebMessageAsJson(L"{\"error\":\"无法取得文件路径，请粘贴本机文件的完整路径\"}");
     }
     CoTaskMemFree(path);
 }
 void handle(const string &message) {
-    if ((message.size() > 12000 && message.rfind("playset ", 0) != 0 && message.rfind("removeurls ", 0) != 0) || message.find_first_of("\r\n") != string::npos)
+    if ((message.size() > 12000 && message.rfind("playset ", 0) != 0 && message.rfind("removeurls ", 0) != 0 && !(message.size()<150000 && message.rfind("mix-export ",0)==0)) || message.find_first_of("\r\n") != string::npos)
         return;
     auto [cmd, arg] = split(trim(message));
     string result;
@@ -434,6 +478,28 @@ void handle(const string &message) {
         beforeEdit.reset();
     };
     try {
+        if (cmd == "mix-export") {
+            const auto tab = arg.find('\t');
+            if (tab==string::npos) throw std::runtime_error("没有可分享的曲目");
+            nicomix::Mix mix{arg.substr(0,tab), {}}; std::istringstream ids(arg.substr(tab+1));
+            for (string id; ids >> id;) {
+                const auto& song = station->entries().at(number(id,0,station->count()-1));
+                if (!urlOK(song.url)) throw std::runtime_error("歌单不能包含本机路径");
+                if (mix.songs.size()>=nicomix::maxTracks) throw std::runtime_error("最多可分享 10000 首");
+                mix.songs.push_back({song.url,song.name});
+            }
+            mixExport = std::move(mix); PostMessageW(window, exportMixMessage,0,0); return;
+        }
+        if (cmd == "mix-open") { openMix(SourceRegistry::localFile(arg)); return; }
+        if (cmd == "mix-cancel") { if (arg == std::to_string(mixToken)) mixPreview.reset(); return; }
+        if (cmd == "mix-import") {
+            if (!mixPreview || arg != std::to_string(mixToken) || !collectionMode.empty()) throw std::runtime_error("歌单预览已失效");
+            std::vector<Track> songs;
+            for (auto& s : mixPreview->songs) songs.push_back({s.url,s.title,std::nullopt});
+            mixPreview.reset(); beforeEdit = station->entries(); editKind = "collection"; editCount = songs.size();
+            auto order = station->commitCollection(songs); recordEdit(true);
+            publish(true, {}, "nicomix", false, false, std::move(order)); return;
+        }
         if (cmd == "history-apply") {
             const auto [id, direction] = split(arg);
             if (direction != "undo" && direction != "redo") return;
@@ -544,6 +610,7 @@ void handle(const string &message) {
             return;
         }
         if (cmd == "ready") {
+            mixPreview.reset();
             libraryHistory.clear();
             pendingLibraryEdit.clear();
             pendingHistoryResult.clear();
@@ -561,6 +628,7 @@ void handle(const string &message) {
             view->PostWebMessageAsJson(wide("{\"appVersion\":" + quotedJson(NICOMUSIC_VERSION) + "}").c_str());
             publishUpdates(true);
             publishWindowState();
+            if (!initialMix.empty()) PostMessageW(window,openMixMessage,0,0);
             changed = true;
         } else if (cmd == "start" || cmd == "add") {
             if (!collectionMode.empty()) throw std::runtime_error("正在导入另一个合集");
@@ -634,7 +702,7 @@ void handle(const string &message) {
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
         recordEdit(false);
-        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision");
+        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision" || cmd == "mix-import");
     }
 }
 void resize() {
@@ -876,6 +944,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         break;
+    case exportMixMessage: chooseMixDirectory(); return 0;
+    case openMixMessage:
+        if (ready && !initialMix.empty()) { auto path = std::move(initialMix); initialMix.clear(); openMix(path); }
+        return 0;
+    case WM_COPYDATA: {
+        const auto data = reinterpret_cast<const COPYDATASTRUCT*>(l);
+        if (!data || data->dwData!=openMixMessage || !data->lpData || data->cbData<4 || data->cbData>65536 || data->cbData%sizeof(wchar_t)) return FALSE;
+        auto p = static_cast<const wchar_t*>(data->lpData); auto len = data->cbData/sizeof(wchar_t);
+        if (wcsnlen_s(p,len)!=len-1 || !nicomix::isFile(p)) return FALSE;
+        initialMix = p; if (ready) PostMessageW(h,openMixMessage,0,0); return TRUE;
+    }
     case activateWindow:
         restoreWindow(h);
         return 0;
@@ -990,7 +1069,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         MessageBoxW(nullptr, L"无法检查播放器是否已运行。", L"NicoMusic", MB_OK | MB_ICONERROR);
         return 1;
     }
+    int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argv && argc==2 && nicomix::isFile(argv[1])) {
+        std::error_code ec; initialMix = fs::absolute(argv[1],ec); if (ec) initialMix.clear();
+    }
+    LocalFree(argv);
     if (alreadyRunning) {
+        if (!initialMix.empty()) {
+            HWND dest{};
+            for (int i=0;i<40 && !dest;++i) {
+                for (HWND h=nullptr;(h=FindWindowExW(nullptr,h,windowClass,nullptr));)
+                    if (GetPropW(h,primaryMarker)) { dest=h; break; }
+                if (!dest) Sleep(50);
+            }
+            COPYDATASTRUCT data{openMixMessage, static_cast<DWORD>((initialMix.native().size()+1)*sizeof(wchar_t)), const_cast<wchar_t*>(initialMix.c_str())};
+            DWORD_PTR result{};
+            if (!dest || !SendMessageTimeoutW(dest,WM_COPYDATA,0,reinterpret_cast<LPARAM>(&data),SMTO_ABORTIFHUNG,2000,&result) || !result) return 1;
+        }
         handOffForeground();
         return SetEvent(activation.get()) ? 0 : 1;
     }

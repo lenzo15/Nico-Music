@@ -441,6 +441,7 @@ public:
                 queueValid = false;
                 try {
                     for (int i = before; i < count(); ++i) {
+                        if (sources.route(tracks[i].url).empty()) continue;
                         appendForPlayback(*player, tracks[i].url);
                         queue.push_back(i);
                     }
