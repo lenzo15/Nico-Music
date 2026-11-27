@@ -62,9 +62,37 @@ void Player::check(int code) const {
     if (code < 0) throw std::runtime_error(std::string("播放引擎：") + error(code));
 }
 void Player::command(std::initializer_list<const char*> args) {
+    const char* name = args.size() ? *args.begin() : "";
+    const bool stop = !std::strcmp(name, "stop");
+    if (loadingEntry >= 0 && !cancelledLoad && (stop || !std::strcmp(name, "playlist-play-index"))) {
+        cancelledLoad = true;
+        const auto id = std::to_string(loadingEntry);
+        const char* cancel[] = {"script-message", "bm-playback-cancel", id.c_str(), nullptr};
+        run(ctx, cancel);
+    }
     std::vector<const char*> argv(args);
     argv.push_back(nullptr);
     check(run(ctx, argv.data()));
+    if (stop) {
+        for (const auto& entry : playlistUrls) retiredEntries.push_back(entry.first);
+    }
+}
+int64_t Player::playlistId(int64_t position) const {
+    return position < 0 ? -1 : integer(("playlist/" + std::to_string(position) + "/id").c_str());
+}
+std::string Player::playlistUrl(int64_t id) const {
+    const auto found = playlistUrls.find(id);
+    return found != playlistUrls.end() ? found->second : std::string{};
+}
+void Player::appendPlaylistEntry(const std::string& target, const std::string& url) {
+    command({"loadfile", target.c_str(), "append"});
+    const auto id = playlistId(integer("playlist-count", 0) - 1);
+    if (id >= 0) playlistUrls[id] = url;
+}
+void Player::removePlaylistEntry(int position) {
+    const auto id = playlistId(position);
+    command({"playlist-remove", std::to_string(position).c_str()});
+    if (id >= 0) retiredEntries.push_back(id);
 }
 std::string Player::str(const char* property) const {
     char* value = getString(ctx, property);
@@ -107,16 +135,45 @@ std::optional<std::string> Player::takeCollection() {
     return std::move(reply.rows);
 }
 
-std::string Player::poll(std::vector<Metadata>& updates) {
-    std::string result;
+std::optional<Player::PlaybackError> Player::poll(std::vector<Metadata>& updates, WarningChanges& warnings, const ClientMessageSink& sink) {
+    std::optional<PlaybackError> result;
     for (;;) {
         const auto* ev = waitEvent(ctx, 0);
         if (ev->event_id == MPV_EVENT_NONE) {
             if (metadataBusy() && std::chrono::steady_clock::now() >= deadline) pendingToken.clear();
+            // Keep retired entries through this drain so already queued events still resolve.
+            for (const auto id : retiredEntries) playlistUrls.erase(id);
+            retiredEntries.clear();
             return result;
+        }
+        if (ev->event_id == MPV_EVENT_START_FILE) {
+            currentEntry = loadingEntry = static_cast<const mpv_event_start_file*>(ev->data)->playlist_entry_id;
+            currentUrl = playlistUrl(currentEntry);
+            cancelledLoad = false;
+            reportedError.reset();
         }
         if (ev->event_id == MPV_EVENT_CLIENT_MESSAGE) {
             auto* msg = static_cast<const mpv_event_client_message*>(ev->data);
+            if (sink) sink(*msg);
+            if (!cancelledLoad && loadingEntry >= 0 && msg->num_args == 5 &&
+                !std::strcmp(msg->args[0], "bm-playback-error") && std::to_string(loadingEntry) == msg->args[1] &&
+                std::strlen(msg->args[2]) <= 8192 && std::strlen(msg->args[4]) <= 512) {
+                const std::string target = msg->args[2], code = msg->args[3];
+                const auto url = SourceRegistry::original(target);
+                const auto prefixEnd = target.find("://");
+                if (url != target && prefixEnd > 3 && (currentUrl.empty() || url == currentUrl)) {
+                    const char* message = code == "auth_required" ? "需要登录此来源" :
+                        code == "unavailable" ? "来源暂不提供此曲目的播放" :
+                        code == "network" ? "连接来源失败，请检查网络" :
+                        code == "timeout" ? "链接解析超时，请重试" :
+                        code == "resolve_failed" ? "来源无法解析播放地址" : nullptr;
+                    if (message) {
+                        std::string detail = msg->args[4];
+                        for (char& c : detail) if (static_cast<unsigned char>(c) < 32 || c == 127) c = ' ';
+                        reportedError = PlaybackError{code, detail.empty() ? message : detail, target.substr(3, prefixEnd - 3), url};
+                    }
+                }
+            }
             if (!collectionToken.empty() && msg->num_args == 4 &&
                 !std::strcmp(msg->args[0], "bm-collection-result") && collectionToken == msg->args[1]) {
                 collectionToken.clear();
@@ -131,6 +188,8 @@ std::string Player::poll(std::vector<Metadata>& updates) {
             }
         }
         if (ev->event_id == MPV_EVENT_FILE_LOADED) {
+            if (!currentUrl.empty()) warnings[currentUrl].clear();
+            loadingEntry = -1; reportedError.reset(); cancelledLoad = false;
             if (resumeTime > 0 && str("path") == resumePath && str("seekable") == "yes") {
                 try { command({"seek", std::to_string(resumeTime).c_str(), "absolute"}); } catch (const std::exception&) {}
             }
@@ -141,8 +200,22 @@ std::string Player::poll(std::vector<Metadata>& updates) {
         }
         if (ev->event_id == MPV_EVENT_END_FILE) {
             const auto* end = static_cast<const mpv_event_end_file*>(ev->data);
-            if (end->reason == MPV_END_FILE_REASON_ERROR)
-                result = std::string("链接播放失败：") + error(end->error) + "。请检查网络、网页权限和来源插件的安装及版本。";
+            const auto id = end->playlist_entry_id;
+            const bool loading = loadingEntry == id;
+            const auto url = currentEntry == id ? currentUrl : playlistUrl(id);
+            if (end->reason == MPV_END_FILE_REASON_ERROR && !(loading && cancelledLoad)) {
+                if (loading && reportedError) result = std::move(reportedError);
+                else result = PlaybackError{"playback_failed", std::string("链接播放失败：") + error(end->error) +
+                    "。请检查网络、网页权限和来源插件的安装及版本。", "", url};
+                if (!result->url.empty()) warnings[result->url] = result->message;
+            }
+            if (end->reason == MPV_END_FILE_REASON_REDIRECT && !url.empty()) {
+                playlistUrls.erase(id);
+                for (int i = 0; i < end->playlist_insert_num_entries; ++i)
+                    playlistUrls.emplace(end->playlist_insert_id + i, url);
+            }
+            if (currentEntry == id) { currentEntry = -1; currentUrl.clear(); }
+            if (loading) { loadingEntry = -1; reportedError.reset(); cancelledLoad = false; }
         }
     }
 }

@@ -69,6 +69,34 @@ svg.iconSvg {
 }
 /* Minimal focus surface: the main transport stays mounted and functional. */
 #focusView { position: relative; overflow: hidden; container-type: size; height: calc(100dvh - var(--bar) - var(--chrome)); outline: none; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Capture only the outgoing scene so the window controls and live player remain clickable. */
+  :root[data-focus-transition] { view-transition-name: none; }
+  :root[data-focus-transition="enter"] .shell,
+  :root[data-focus-transition="exit"] #focusView,
+  :root[data-focus-transition="preset"] #focusContent { view-transition-name: focus-scene; }
+  :root:is([data-focus-transition="exit"], [data-focus-transition="preset"]) body[data-focus-preset] #focusBackground {
+    view-transition-name: focus-backdrop;
+  }
+  :root[data-focus-transition]::view-transition { pointer-events: none; }
+  :root[data-focus-transition]::view-transition-group(*) {
+    animation-duration: .28s;
+    animation-timing-function: cubic-bezier(.22,.61,.36,1);
+    overflow: clip;
+  }
+  /* Preset backgrounds reach behind the chrome; only fade the part in the scene. */
+  :root[data-focus-transition]::view-transition-group(focus-backdrop) {
+    clip-path: inset(var(--chrome) 0 var(--bar));
+  }
+  :root[data-focus-transition="enter"] #focusView:not([hidden]) {
+    animation: focus-scene-in .28s cubic-bezier(.22,.61,.36,1) both;
+  }
+  :root[data-focus-transition="exit"]::view-transition-old(focus-scene) { animation-name: focus-scene-out; }
+  :root[data-focus-transition="preset-live"]::view-transition-old(*) { animation-name: focus-preset-out; }
+  @keyframes focus-preset-out { to { opacity: 0; } }
+  @keyframes focus-scene-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+  @keyframes focus-scene-out { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+}
 #focusContent { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .basicFocusTitle { max-width: 80%; text-align: center; overflow-wrap: anywhere; }
 .focusTools { position: absolute; z-index: 1; top: 14px; left: 18px; display: flex; gap: 8px; }
@@ -86,7 +114,12 @@ svg.iconSvg {
   transform-origin: 17px 0;
 }
 .presetHeading { padding: 7px 12px 5px; color: inherit; opacity: .65; font-size: 11px; font-weight: 600; }
-#focusPreset { max-height: min(40vh, 290px); overflow-y: auto; scrollbar-width: thin; }
+#focusPreset {
+  max-height: min(40vh, 290px);
+  overflow-y: auto;
+  --scroll-thumb: color-mix(in srgb, var(--menu-ink, #252529) 32%, transparent);
+  --scroll-thumb-active: color-mix(in srgb, var(--menu-ink, #252529) 46%, transparent);
+}
 #focusPreset button {
   width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 7px 12px; border-radius: 12px; font-size: 14px; text-align: start;
@@ -207,7 +240,8 @@ nav button:hover,
 .icon:not(:disabled):hover {
   background: #f0edef;
 }
-nav button.selected {
+nav button.selected,
+.source.selected {
   background: #fbe6e8;
   color: #c83243;
   font-weight: 700;
@@ -302,15 +336,18 @@ dialog.sheet::backdrop { background: #25263138; backdrop-filter: blur(10px); }
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: auto;
-  scrollbar-color: auto;
 }
-.settingsBody::-webkit-scrollbar { width: 4px; height: 4px; }
-.settingsBody::-webkit-scrollbar-track { background: transparent; }
-.settingsBody::-webkit-scrollbar-thumb { border-radius: 999px; background: #63657026; }
-.settingsBody:hover::-webkit-scrollbar-thumb, .settingsBody:focus-within::-webkit-scrollbar-thumb { background: #63657040; }
-.settingsBody::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-.settingsBody::-webkit-scrollbar-corner { background: transparent; }
+/* Shared slim scrollbar; keep system styling in high contrast. */
+@media (forced-colors: none) {
+  /* Non-auto values override ::-webkit-scrollbar styling in Chromium. */
+  .slimScrollbar { scrollbar-width: auto; scrollbar-color: auto; }
+  .slimScrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .slimScrollbar::-webkit-scrollbar-track { background: transparent; }
+  .slimScrollbar::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--scroll-thumb, #63657026); }
+  .slimScrollbar:is(:hover, :focus-within)::-webkit-scrollbar-thumb { background: var(--scroll-thumb-active, #63657040); }
+  .slimScrollbar::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  .slimScrollbar::-webkit-scrollbar-corner { background: transparent; }
+}
 #settings h3 { font-size: 14px; font-weight: 600; letter-spacing: -.15px; }
 #settings p { margin: 6px 0 14px; color: #7d7e88; font-size: 13px; line-height: 1.65; }
 #settings .settingsSectionTitle { margin: 2px 4px 12px; color: #7d7e88; font-size: 12px; }
@@ -442,6 +479,9 @@ main {
   margin: 0 auto;
   padding: 0 clamp(24px, 3.4vw, 54px) 26px;
 }
+#sourceView { display: flex; flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; }
+#sourceView iframe { flex: 1; min-width: 0; border: 0; }
+.sourceIcon { width: 1.35em; height: 1.35em; object-fit: contain; }
 /* Keep the page heading and collection controls outside the list's scrollport. */
 #collection { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 #rows {
@@ -450,6 +490,8 @@ main {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+}
+:is(#rows, #queueItems) {
   scrollbar-width: thin;
   scrollbar-color: #ddd9da transparent;
 }
@@ -884,6 +926,10 @@ input:disabled::-webkit-slider-thumb {
   flex: 1;
   padding: 4px;
 }
+.trackItemTitle { display: flex; align-items: center; gap: 6px; }
+.trackItemTitle > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playbackWarning { color: #995a13; }
+.playbackWarning .iconSvg { width: 14px; height: 14px; stroke-width: 2; }
 .row small,
 .empty p {
   color: var(--muted);
@@ -963,6 +1009,17 @@ dialog label small {
   font-weight: 400;
 }
 #mixSummary { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+#sourceCredentialDialog { width: min(420px, 90vw); }
+#sourceCredentialForm { display: flex; flex-direction: column; max-height: calc(100dvh - 36px); }
+#sourceCredentialTitle, #sourceCredentialEntries button { min-width: 0; overflow-wrap: anywhere; }
+#sourceCredentialEntries { margin-top: 0; }
+.credentialFields { padding: 4px var(--sheet-inset); min-height: 0; overflow-y: auto; }
+.credentialFields p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+#sourceCredentialHelp { white-space: pre-line; }
+#sourceCredentialStatus { margin-top: 10px; }
+#sourceCredentialStatus[data-error] { color: var(--red-dark); }
+#sourceCredentialInput::-ms-reveal { display: none; }
+#sourceCredentialForm .actions { flex: none; flex-wrap: wrap; margin: 16px var(--sheet-inset) var(--sheet-inset); }
 dialog input {
   display: block;
   margin-top: 7px;
@@ -974,8 +1031,6 @@ dialog input {
 }
 .rememberExit { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .rememberExit input { width: auto; margin: 0; padding: 0; accent-color: var(--red); }
-.pluginConfirm { width: min(340px, 90vw); padding: 0; overflow: hidden; }
-.pluginConfirm iframe { display: block; width: 100%; height: min(190px, 80vh); border: 0; }
 #deleteListDialog { width: min(360px, 90vw); }
 #deleteListDialog .sheetHeader { padding-bottom: 8px; }
 #deleteListTitle { display: flex; min-width: 0; white-space: nowrap; }
@@ -985,11 +1040,33 @@ dialog input {
 #deleteListDialog .actions { margin: 18px var(--sheet-inset) var(--sheet-inset); }
 #deleteListDialog button:active { transform: none; filter: brightness(.94); }
 #queueDialog { margin: auto 16px calc(var(--bar) + 8px) auto; width: min(380px, 90vw); }
+@media (prefers-reduced-motion: no-preference) {
+  @supports (overlay: auto) and (transition-behavior: allow-discrete) {
+    /* Keep the sheet in the top layer just long enough to animate its native close. */
+    #queueDialog {
+      opacity: 0;
+      transform: translateX(32px);
+      transition: opacity .18s ease, transform .18s cubic-bezier(.22,.61,.36,1),
+        display .18s allow-discrete, overlay .18s allow-discrete;
+    }
+    #queueDialog[open] { opacity: 1; transform: none; transition-duration: .24s; }
+    #queueDialog::backdrop {
+      opacity: 0;
+      transition: opacity .18s ease, display .18s allow-discrete, overlay .18s allow-discrete;
+    }
+    #queueDialog[open]::backdrop { opacity: 1; transition-duration: .24s; }
+    #queueDialog:not([open]), #queueDialog:not([open])::backdrop { pointer-events: none; }
+    @starting-style {
+      #queueDialog[open] { opacity: 0; transform: translateX(32px); }
+      #queueDialog[open]::backdrop { opacity: 0; }
+    }
+  }
+}
 .queueCard { margin: 0 var(--sheet-inset) var(--sheet-inset); padding: 8px; }
 #queueEmpty { margin: 0; padding: 16px 8px; text-align: center; }
 #queueItems:empty { display: none; }
 #queueCount { font-size: 13px; color: #786f79; font-weight: 400; }
-#queueItems { margin: 0; padding: 0 0 0 32px; max-height: min(48vh, 440px); overflow-y: auto; scrollbar-width: thin; }
+#queueItems { margin: 0; padding: 0 0 0 32px; max-height: min(48vh, 440px); overflow-y: auto; }
 #queueItems li + li { border-top: 1px solid #3c3c430d; }
 #queueItems li::marker { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 #queueItems button:focus-visible { outline-offset: -2px; }
@@ -1009,7 +1086,7 @@ dialog .close {
 aside { min-height: 0; overflow-y: auto; }
 .listHead { display: flex; align-items: center; justify-content: space-between; margin: 22px 8px 4px 15px; color: var(--muted); font-size: 12px; }
 /* Use the sidebar's available height instead of scrolling at a fixed viewport fraction. */
-#listNav { display: block; flex: 0 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+#listNav { display: block; flex: 0 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 #listNav:not(:empty) { min-height: 44px; }
 #listNav button { width: 100%; min-width: 0; }
 #listNav button svg { flex: none; width: 18px; height: 18px; }
@@ -1028,7 +1105,6 @@ aside { min-height: 0; overflow-y: auto; }
 #batchBar label, .row.pick { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 #batchBar label { min-height: 44px; font-weight: 600; }
 #batchCount { color: var(--muted); margin-right: auto; font-variant-numeric: tabular-nums; }
-#batchRemove { color: var(--red-dark); }
 .row.pick { padding-inline: 13px; border-radius: 12px; border-bottom-color: transparent; transition: background-color .16s ease; }
 .row.pick:hover { background-color: #f9f7f8; }
 .row.pick:has(input:checked) { background-color: #fff1f2; }

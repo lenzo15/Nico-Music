@@ -110,6 +110,25 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         except AssertionError:
             print(js("JSON.stringify({errors:window.driverErrors,messages:window.hostMessages})"))
             raise
+        js("""window.warningFixture = '模拟播放失败 <img src=x>';
+          nativeMessage(hostSnapshot({index:1, queue:[0,1,2], tracks:hostTracks.map((t,i) =>
+            i===0 ? {...t, playbackWarning:warningFixture} : t)}))""")
+        for view in ('library', 'likes', 'one'):
+            js(f"select('{view}')")
+            assert js("""(() => {
+              const marks = [...$('rows').querySelectorAll('.playbackWarning')];
+              return marks.length===1 && marks[0].previousElementSibling.textContent==='A' &&
+                marks[0].title===warningFixture && marks[0].getAttribute('aria-label').includes(warningFixture) &&
+                marks[0].querySelector('svg path') && !marks[0].querySelector('img');
+            })()""")
+        js("$('batchToggle').click()")
+        assert js("document.querySelector('.row.pick .playbackWarning')!==null")
+        js("$('viewQueue').click()")
+        assert js("$('queueItems').querySelectorAll('.playbackWarning').length===1 && $('queueItems').querySelector('[data-index=\\'0\\'] .playbackWarning')!==null")
+        js("nativeMessage(hostSnapshot({queue:[0,1,2]}))")
+        assert js("!document.querySelector('.playbackWarning')")
+        js("$('queueDialog').close(); select('library')")
+        print('OK: warning icon on the affected library, batch, playlist and queue item, with reason and recovery')
         js("document.querySelectorAll('.row')[2].querySelector('[title=从音乐库移除]').click()")
         until(lambda: js("tracks.length===2 && !fav.has(song('a').url) && !lists.find('one').urls.includes(song('a').url) && !pendingMutation"))
         assert js("$('toast').classList.contains('show') && $('toast').querySelector('button')?.textContent==='撤销'"), js("JSON.stringify({errors:driverErrors,toast:$('toast').textContent,undo:editHistory.canUndo,messages:hostMessages})")

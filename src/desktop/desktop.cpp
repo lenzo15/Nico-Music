@@ -10,11 +10,14 @@
 #include <windowsx.h>
 #include "../audio/audio_meter.hpp"
 #include "../plugins/plugin_resources.hpp"
+#include "../plugins/source_page_channel.hpp"
 #include <future>
 #include "startup_splash.hpp"
 #include "../updates/updater.hpp"
 #include "../updates/update_install.hpp"
 #include "hotkeys.hpp"
+#include "source_credential.hpp"
+#include <string_view>
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -148,9 +151,10 @@ void trayMenu(HWND h, POINT point) {
 }
 
 std::vector<FocusPreset> focusPresets;
-PluginStamps appliedSources, appliedFocus;
+PluginStamps appliedSources, appliedPages, appliedFocus;
+SourcePageChannel sourcePages;
 std::map<string,string> focusVersions;
-string sourceVersion;
+std::map<string,string> pageVersions;
 std::future<PluginSnapshot> pluginScan;
 std::optional<PluginSnapshot> pendingPlugins;
 HANDLE pluginWatch = INVALID_HANDLE_VALUE;
@@ -330,11 +334,19 @@ void chooseMixDirectory() {
 }
 LibraryHistory libraryHistory;
 string pendingLibraryEdit, pendingHistoryResult;
+bool sourceHasAsset(const MusicSource& source, const std::filesystem::path& file) {
+    auto it = appliedPages.find(source.id);
+    return it != appliedPages.end() && it->second.count(file);
+}
+bool hasSourcePage(const MusicSource& source) {
+    return source.sidebarPage && sourceHasAsset(source, L"index.html");
+}
 void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false,
              std::vector<int> importedTracks = {}) {
     if (!view || !ready)
         return;
-    auto audioError = station->errors(&library);
+    std::optional<Player::PlaybackError> playbackError;
+    auto audioError = station->errors(&library, &playbackError, std::ref(sourcePages));
     bool showPreview = false;
     if (!collectionMode.empty() && collectionPreview.empty()) {
         try {
@@ -380,7 +392,7 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             if (n) data += ',';
             const auto& preset = focusPresets[n];
             data += "{\"id\":" + quotedJson(preset.id) + ",\"name\":" + quotedJson(preset.name) +
-                ",\"revision\":" + quotedJson(focusVersions.at(preset.id)) + "}";
+                ",\"version\":" + quotedJson(preset.version) + ",\"revision\":" + quotedJson(focusVersions.at(preset.id)) + "}";
         }
         data += "],\"sources\":[";
         bool firstSource = true;
@@ -388,12 +400,20 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             if (!firstSource) data += ',';
             firstSource = false;
             data += "{\"id\":" + quotedJson(s.id) + ",\"name\":" + quotedJson(s.name) +
-                    ",\"hasHome\":" + (s.home.empty() ? "false" : "true") + ",\"extensions\":[";
+                    ",\"version\":" + quotedJson(s.version) + ",\"hasHome\":" + (s.home.empty() ? "false" : "true") +
+                    ",\"page\":" + (hasSourcePage(s) ? "true" : "false") +
+                    ",\"icon\":" + quotedJson(!s.icon.empty() && sourceHasAsset(s, std::filesystem::u8path(s.icon)) ? s.icon : "") +
+                    ",\"revision\":" + quotedJson(pageVersions.at(s.id)) + ",\"extensions\":[";
             for (size_t n = 0; n < s.fileExtensions.size(); ++n) {
                 if (n) data += ',';
                 data += quotedJson(s.fileExtensions[n]);
             }
-            data += "]}";
+            data += ']';
+            if (const auto& settings = s.credentials) {
+                data += ",\"credentialSettings\":{\"title\":" + quotedJson(settings->title) + ",\"help\":" + quotedJson(settings->help) +
+                    ",\"label\":" + quotedJson(settings->label) + ",\"placeholder\":" + quotedJson(settings->placeholder) + "}";
+            }
+            data += '}';
         }
         data += "],\"tracks\":[";
         bool first = true;
@@ -408,7 +428,10 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             }
             const auto source = station->providers().match(t.url);
             data += "{\"source\":" + quotedJson(source ? source->name : "") + ",\"url\":" + quotedJson(t.url) + ",\"name\":" + quotedJson(t.name) +
-                    ",\"thumbnail\":" + quotedJson(t.thumbnail.value_or("")) + "}";
+                    ",\"thumbnail\":" + quotedJson(t.thumbnail.value_or(""));
+            if (auto warning = station->playbackWarning(t.url); !warning.empty())
+                data += ",\"playbackWarning\":" + quotedJson(warning);
+            data += '}';
         }
         data += ']';
     }
@@ -416,9 +439,18 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
         err = audioError;
     if (!err.empty())
         data += ",\"error\":" + quotedJson(err);
+    if (playbackError) {
+        const auto& failure = *playbackError;
+        data += ",\"playbackError\":{\"code\":" + quotedJson(failure.code) + ",\"message\":" + quotedJson(failure.message) +
+                ",\"source\":" + quotedJson(failure.source) + ",\"url\":" + quotedJson(failure.url) + "}";
+    }
+    if (auto reply = sourcePages.take()) {
+        data += ",\"sourcePageReply\":{\"id\":" + quotedJson(reply->id) + ",\"data\":" + quotedJson(reply->data) +
+                ",\"error\":" + quotedJson(reply->error) + "}";
+    }
     if (!collectionMode.empty()) data += ",\"collectionPending\":true";
     if (showPreview) data += ",\"collectionPreview\":{\"id\":" + quotedJson(std::to_string(collectionId)) +
-        ",\"source\":" + quotedJson(collectionSource) + ",\"revision\":" + quotedJson(sourceVersion) + ",\"count\":" + std::to_string(collectionPreview.size()) +
+        ",\"source\":" + quotedJson(collectionSource) + ",\"count\":" + std::to_string(collectionPreview.size()) +
         ",\"play\":" + (collectionMode == "start" ? "true}" : "false}");
     if (importFailed) data += ",\"importFailed\":true";
     if (!importedTracks.empty()) {
@@ -458,6 +490,58 @@ void selectedFile(ICoreWebView2WebMessageReceivedEventArgs *args) {
         view->PostWebMessageAsJson(L"{\"error\":\"无法取得文件路径，请粘贴本机文件的完整路径\"}");
     }
     CoTaskMemFree(path);
+}
+std::future<sourceCredential::Result> credentialJob;
+std::wstring credentialRequestId;
+void credentialReply(std::wstring_view id, sourceCredential::Result result) {
+    if (!view || !ready) return;
+    using sourceCredential::Result;
+    const wchar_t* status = result == Result::saved ? L"saved" : result == Result::empty ? L"empty" :
+        result == Result::invalid ? L"invalid" : result == Result::unavailable ? L"unavailable" : L"failed";
+    // Only the validated numeric request ID and a fixed result code are returned.
+    std::wstring json = L"{\"sourceCredential\":{\"id\":\"";
+    json.append(id).append(L"\",\"status\":\"").append(status).append(L"\"}}");
+    view->PostWebMessageAsJson(json.c_str());
+}
+void pollCredentialJob() {
+    if (!credentialJob.valid() || credentialJob.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+    auto result = sourceCredential::Result::failed;
+    try { result = credentialJob.get(); } catch (const std::exception&) {}
+    credentialReply(credentialRequestId, result);
+    credentialRequestId.clear();
+}
+constexpr std::wstring_view credentialPrefix = L"source-credential ";
+void handleCredential(std::wstring_view request) {
+    using namespace sourceCredential;
+    const auto separator = request.find(L' ');
+    const auto id = request.substr(0, separator);
+    if (separator == request.npos || id.empty() || id.size() > 24 || id.find_first_not_of(L"0123456789") != id.npos)
+        return;
+    request.remove_prefix(separator + 1);
+    const auto sourceEnd = request.find(L' ');
+    const auto source = request.substr(0, sourceEnd);
+    if (sourceEnd == request.npos || source.empty() || source.size() > 64 ||
+        source.find_first_not_of(L"abcdefghijklmnopqrstuvwxyz0123456789-") != source.npos)
+        return credentialReply(id, Result::invalid);
+    request.remove_prefix(sourceEnd + 1);
+    const auto space = request.find(L' ');
+    const auto op = request.substr(0, space);
+    const auto input = space == request.npos ? std::wstring_view{} : request.substr(space + 1);
+    Action action;
+    if (op == L"status" && input.empty()) action = Action::status;
+    else if (op == L"clear" && input.empty()) action = Action::clear;
+    else if (op == L"save" && !input.empty()) action = Action::save;
+    else return credentialReply(id, Result::invalid);
+    if (input.size() > maxBytes || input.find_first_of(L"\r\n") != input.npos) return credentialReply(id, Result::invalid);
+    pollCredentialJob();
+    if (credentialJob.valid()) return credentialReply(id, Result::failed);
+    const auto* provider = station->providers().find(string(source.begin(), source.end()));
+    if (!provider || !provider->credentials) return credentialReply(id, Result::unavailable);
+    try {
+        credentialRequestId = id;
+        credentialJob = std::async(std::launch::async, sourceCredential::run,
+            provider->folder / fs::u8path(provider->credentials->helper), action, input.empty() ? string{} : utf8(input.data()));
+    } catch (const std::exception&) { credentialReply(id, Result::failed); }
 }
 void handle(const string &message) {
     if ((message.size() > 12000 && message.rfind("playset ", 0) != 0 && message.rfind("removeurls ", 0) != 0 && !(message.size()<150000 && message.rfind("mix-export ",0)==0)) || message.find_first_of("\r\n") != string::npos)
@@ -631,16 +715,25 @@ void handle(const string &message) {
             publishWindowState();
             if (!initialMix.empty()) PostMessageW(window,openMixMessage,0,0);
             changed = true;
-        } else if (cmd == "start" || cmd == "add") {
+        } else if (cmd == "start" || cmd == "add" || cmd == "source-collection") {
+            if (cmd == "source-collection") {
+                const auto [id, url] = split(arg);
+                const auto* provider = station->providers().match(url);
+                if (!provider || provider->id != id || !hasSourcePage(*provider) ||
+                    url.rfind("https://", 0) != 0 || !urlOK(url) || !station->providers().isCollection(url))
+                    throw std::runtime_error("此链接不是当前来源的歌单");
+                arg = url;
+            }
             if (!collectionMode.empty()) throw std::runtime_error("正在导入另一个合集");
             if (station->beginCollection(arg)) {
-                collectionMode = cmd;
+                collectionMode = cmd == "source-collection" ? "add" : cmd;
                 ++collectionId;
                 collectionSource = station->providers().match(split(arg).first)->id;
                 publish(false);
                 return;
             }
             beforeEdit = station->entries();
+            if (cmd == "source-collection") throw std::runtime_error("无法读取来源歌单");
             editKind = "import";
             int i = station->add(arg);
             changed = true;
@@ -692,6 +785,22 @@ void handle(const string &message) {
         else if (cmd == "seek" && station->active() >= 0) {
             number(arg, 0, INT_MAX);
             station->engine().command({"seek", arg.c_str(), "absolute"});
+        } else if (cmd == "source-page") {
+            const auto [id, tail] = split(arg);
+            const auto [request, rest] = split(tail);
+            const auto [action, data] = split(rest);
+            const auto s = station->providers().find(id);
+            if (!s || !hasSourcePage(*s) || request.empty() || request.size() > 24 ||
+                request.find_first_not_of("0123456789") != string::npos || action.empty() || action.size() > 64 ||
+                action.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_-") != string::npos || data.size() > 16384)
+                throw std::runtime_error("无效的来源页面请求");
+            sourcePages.request(station->engine(), id, request, action, data);
+        } else if (cmd == "source-profile") {
+            const auto [id, url] = split(arg);
+            const auto* provider = station->providers().match(url);
+            if (!provider || provider->id != id || !hasSourcePage(*provider) || url.rfind("https://", 0) != 0)
+                throw std::runtime_error("个人主页不属于当前来源");
+            browse(url);
         } else if (cmd == "source") {
             const auto s = station->providers().find(arg);
             if (!s) throw std::runtime_error("来源插件未安装");
@@ -703,7 +812,7 @@ void handle(const string &message) {
         publish(changed, {}, result, cmd == "play" || cmd == "playset");
     } catch (const std::exception &e) {
         recordEdit(false);
-        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision" || cmd == "mix-import");
+        publish(true, e.what(), {}, false, cmd == "add" || cmd == "start" || cmd == "collection-decision" || cmd == "source-collection" || cmd == "mix-import");
     }
 }
 void resize() {
@@ -729,9 +838,17 @@ void applyPlugins(PluginSnapshot snapshot, bool initial) {
         collectionMode.clear(); collectionPreview.clear(); ++collectionId;
         try { station->reloadSources(std::move(snapshot.sources), !initial); }
         catch (const std::exception& e) { error = e.what(); }
-        appliedSources = std::move(snapshot.sourceFiles); sourceVersion = version;
+        appliedSources = std::move(snapshot.sourceFiles);
+        sourcePages.reset();
         if (cancelled) error = "来源插件已更新，请重新导入合集";
     }
+    std::map<string,string> nextVersions;
+    for (const auto& [id, files] : snapshot.pageFiles) {
+        const auto old = appliedPages.find(id);
+        nextVersions[id] = sourcesChanged || old == appliedPages.end() || old->second != files ? version : pageVersions.at(id);
+    }
+    pageVersions.swap(nextVersions);
+    appliedPages = std::move(snapshot.pageFiles);
     for (auto it = focusVersions.begin(); it != focusVersions.end();) {
         if (snapshot.focusFiles.count(it->first)) { ++it; continue; }
         it = focusVersions.erase(it);
@@ -750,8 +867,8 @@ void pollPlugins() {
         if (pluginScan.valid()) {
             if (pluginScan.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
             auto scan = pluginScan.get();
-            if (scan.sourceFiles == appliedSources && scan.focusFiles == appliedFocus) pendingPlugins.reset();
-            else if (pendingPlugins && scan.sourceFiles == pendingPlugins->sourceFiles && scan.focusFiles == pendingPlugins->focusFiles) {
+            if (scan.sourceFiles == appliedSources && scan.pageFiles == appliedPages && scan.focusFiles == appliedFocus) pendingPlugins.reset();
+            else if (pendingPlugins && scan.sourceFiles == pendingPlugins->sourceFiles && scan.pageFiles == pendingPlugins->pageFiles && scan.focusFiles == pendingPlugins->focusFiles) {
                 pendingPlugins.reset();
                 applyPlugins(std::move(scan), false);
             } else { pendingPlugins = std::move(scan); retry = true; }
@@ -798,7 +915,8 @@ HRESULT setup(ICoreWebView2Controller *c) {
     if (FAILED(v3->get_Environment(&env))) return E_FAIL;
     ComPtr<ICoreWebView2_22> v22;
     view.As(&v22);
-    for (auto pattern : {L"https://*.focus.bilimusic.local/*", L"https://*.collection.bilimusic.local/*"}) {
+    for (auto pattern : {L"https://*.focus.bilimusic.local/*",
+                         L"https://*.source.bilimusic.local/*"}) {
         hr = v22 ? v22->AddWebResourceRequestedFilterWithRequestSourceKinds(pattern, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
                     COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL) :
                     view->AddWebResourceRequestedFilter(pattern, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
@@ -813,8 +931,15 @@ HRESULT setup(ICoreWebView2Controller *c) {
             std::wstring url(raw); CoTaskMemFree(raw);
             ComPtr<IStream> stream;
             std::wstring headers = L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+            const auto hostEnd = url.find(L'/', 8);
+            const std::wstring sourceSuffix = L".source.bilimusic.local";
+            if (hostEnd != url.npos && hostEnd >= sourceSuffix.size() &&
+                url.compare(hostEnd - sourceSuffix.size(), sourceSuffix.size(), sourceSuffix) == 0)
+                headers += L"\r\nContent-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                           L"img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; "
+                           L"frame-src 'none'; object-src 'none'; frame-ancestors https://studio.bilimusic.local";
             try {
-                auto path = pluginResource(url, appliedFocus, appliedSources, appDir() / L"plugins");
+                auto path = pluginResource(url, appliedFocus, appliedPages, appDir() / L"plugins");
                 if (!path.empty() && SUCCEEDED(SHCreateStreamOnFileEx(path.c_str(), STGM_READ | STGM_SHARE_DENY_NONE,
                         FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, &stream))) headers += std::wstring(L"\r\nContent-Type: ") + pluginMime(path);
             } catch (const std::exception&) {} // Reject malformed or disappearing assets locally.
@@ -884,7 +1009,11 @@ HRESULT setup(ICoreWebView2Controller *c) {
                 if (from && wcscmp(from, page) == 0 && SUCCEEDED(args->TryGetWebMessageAsString(&msg)) &&
                     msg) {
                     if (wcscmp(msg, L"selectedFile") == 0) selectedFile(args);
-                    else handle(utf8(msg));
+                    else if (wcsncmp(msg, credentialPrefix.data(), credentialPrefix.size()) == 0) {
+                        const std::wstring_view request(msg);
+                        handleCredential(request.substr(credentialPrefix.size()));
+                        SecureZeroMemory(msg, request.size() * sizeof(wchar_t));
+                    } else handle(utf8(msg));
                 }
                 CoTaskMemFree(from);
                 CoTaskMemFree(msg);
@@ -982,7 +1111,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (controller) controller->NotifyParentWindowPositionChanged();
         break;
     case WM_TIMER:
-        if (w == 1) { publish(false); publishUpdates(); }
+        if (w == 1) { pollCredentialJob(); publish(false); publishUpdates(); }
         else if (w == 2) meterTick();
         else if (w == 5) pollPlugins();
         else if (w == trayRetryTimer) ensureTrayIcon(h);

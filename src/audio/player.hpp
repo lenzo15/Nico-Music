@@ -4,10 +4,12 @@
 #include <filesystem>
 #include <initializer_list>
 #include <chrono>
+#include <functional>
 #include "../plugins/sources.hpp"
 #include <optional>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 // Resolve the stable C client API at run time; browsing does not need the DLL.
 class Player {
@@ -27,6 +29,18 @@ class Player {
     std::chrono::steady_clock::time_point collectionDeadline;
     struct CollectionReply { std::string rows, error; };
     std::optional<CollectionReply> collectionReply;
+    // Stable mpv playlist IDs identify failures even after automatic advance.
+    std::unordered_map<int64_t, std::string> playlistUrls;
+    std::vector<int64_t> retiredEntries;
+    int64_t currentEntry = -1, loadingEntry = -1;
+    std::string currentUrl;
+    bool cancelledLoad = false;
+    int64_t playlistId(int64_t position) const;
+    std::string playlistUrl(int64_t id) const;
+public:
+    struct PlaybackError { std::string code, message, source, url; };
+private:
+    std::optional<PlaybackError> reportedError;
     decltype(&mpv_get_property) get{};
     decltype(&mpv_get_property_string) getString{};
     decltype(&mpv_free) release{};
@@ -39,6 +53,8 @@ public:
     Player(const Player&) = delete;
     Player& operator=(const Player&) = delete;
     void command(std::initializer_list<const char*> args);
+    void appendPlaylistEntry(const std::string& target, const std::string& url);
+    void removePlaylistEntry(int position);
     std::string str(const char* property) const;
     int64_t integer(const char* property, int64_t fallback = -1) const;
     double seconds(const char* property) const;
@@ -52,5 +68,8 @@ public:
     std::optional<std::string> takeCollection();
     void discardCollection() { collectionToken.clear(); collectionReply.reset(); }
     bool metadataBusy() const { return !pendingToken.empty(); }
-    std::string poll(std::vector<Metadata>& updates);
+    using ClientMessageSink = std::function<void(const mpv_event_client_message&)>;
+    // Last result per original URL since the previous poll; an empty message clears a warning.
+    using WarningChanges = std::unordered_map<std::string, std::string>;
+    std::optional<PlaybackError> poll(std::vector<Metadata>& updates, WarningChanges& warnings, const ClientMessageSink& sink = {});
 };

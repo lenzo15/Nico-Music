@@ -1,12 +1,19 @@
 #pragma once
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
+struct SourceCredentialSettings {
+    std::string helper, title, help, label, placeholder;
+};
+
 struct MusicSource {
-    std::string id, name, home, search;
+    std::string id, name, home, search, icon, version;
+    bool sidebarPage = false;
     std::vector<std::string> hosts, fileExtensions, collectionPaths;
     std::filesystem::path folder;
+    std::optional<SourceCredentialSettings> credentials;
 };
 
 // Immutable snapshot of local manifests, shared by navigation, metadata and playback.

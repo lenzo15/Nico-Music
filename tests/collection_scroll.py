@@ -92,10 +92,53 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js("$('sidebarStatus').textContent === '已停止'")
         js("state.index=-1; sync()")
         print('OK: sidebar identity, library count, loading/play/pause/stop status and reduced-motion equalizer')
+        cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'forced-colors', 'value': 'none'}]})
+        assert js("""(() => {
+          const nav = $('listNav'), aside = nav.closest('aside'), shell = aside.closest('.shell');
+          const playlist = nav.firstElementChild, height = shell.style.height;
+          const scrollports = [aside, nav];
+          try {
+            shell.style.height = '760px';
+            if (!scrollports.every(el => el.scrollHeight <= el.clientHeight)) return false;
+            for (let i = 0; i < 7; i++) nav.append(playlist.cloneNode(true));
+            shell.style.height = '150px';
+            return scrollports.every(el => {
+              el.scrollTop = el.scrollHeight;
+              const style = getComputedStyle(el);
+              const pseudo = part => getComputedStyle(el, `::-webkit-scrollbar${part}`);
+              return el.scrollTop > 0 && style.scrollbarWidth === 'auto' && style.scrollbarColor === 'auto' &&
+                pseudo('').width === '4px' && pseudo('-button').display === 'none' &&
+                pseudo('-track').backgroundColor === 'rgba(0, 0, 0, 0)' && pseudo('-thumb').borderRadius === '999px';
+            });
+          } finally {
+            nav.replaceChildren(playlist);
+            shell.style.height = height;
+            aside.scrollTop = nav.scrollTop = 0;
+          }
+        })()""")
+        cdp('Emulation.setEmulatedMedia', {'features': []})
+        print('OK: sidebar and playlist scroll only on overflow, with slim arrow-free scrollbars')
         for page, newest in [('library', 99), ('likes', 59), (js('lists.items[0].id'), 79)]:
             js(f"select({json.dumps(page)})")
             assert js("[...document.querySelectorAll('.row strong')].map(n => n.textContent)") == [
                 f'Track {i}' for i in range(newest, -1, -1)]
+        js("select('library'); $('batchToggle').click()")
+        assert js("""['batchPlay', 'batchAdd', 'batchFav', 'batchRemove'].every(id => {
+          const b = $(id), ref = $('shareMix'), glyph = b.querySelector('svg[aria-hidden=true]');
+          const sameStyle = (a, b, props) => props.every(prop => getComputedStyle(a)[prop] === getComputedStyle(b)[prop]);
+          return b.disabled && !b.textContent.trim() && glyph && b.title && b.title === b.ariaLabel &&
+            sameStyle(b, ref, ['width', 'height', 'borderRadius', 'borderTopWidth', 'backgroundColor']) &&
+            sameStyle(glyph, ref.querySelector('svg'), ['width', 'height']);
+        })""")
+        js("document.querySelector('.pick input[value=\"file:///test/59.wav\"]').click()")
+        assert js("$('batchFav').ariaLabel === '取消喜欢' && $('batchFav').classList.contains('on') && !$('batchPlay').disabled")
+        js("document.querySelector('.pick input[value=\"file:///test/99.wav\"]').click()")
+        assert js("$('batchFav').ariaLabel === '喜欢' && !$('batchFav').classList.contains('on') && $('batchRemove').ariaLabel === '从音乐库移除'")
+        js("select('likes'); $('batchToggle').click()")
+        assert js("$('batchRemove').hidden && $('batchFav').ariaLabel === '取消喜欢'")
+        js("select(lists.items[0].id); $('batchToggle').click()")
+        assert js("!$('batchRemove').hidden && $('batchRemove').ariaLabel === '移出歌单'")
+        print('OK: icon-only batch actions retain accessible labels and show the correct selection state')
         fixed_geometry = """['.windowBar', '.topbar', '.collectionTools', '#batchBar', 'footer'].map(s => {
           const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom];
         })"""
@@ -198,6 +241,90 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
           return !!$('rows').querySelector('.empty') && main.scrollTop === 0 && main.scrollHeight <= main.clientHeight + 1;
         })()""")
         print('OK: keyboard list scrolling, short search results and empty state')
+
+        cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'no-preference'}]})
+        js("state={...state,index:4,queue:tracks.slice(0,25).map((_,i)=>i)}; sync()")
+        queue_open = "$('viewQueue').focus(); $('viewQueue').click()"
+        queue_close = "$('queueDialog').querySelector('.close').click()"
+        queue_hidden = "getComputedStyle($('queueDialog')).display==='none'"
+        queue_moving = """(() => {
+          const d=$('queueDialog'), style=getComputedStyle(d);
+          return new DOMMatrix(style.transform).m41>0 && style.opacity>0 && style.opacity<1 && style.overlay==='auto';
+        })()"""
+
+        def open_queue():
+            js(queue_open)
+            until(lambda: js(f"$('queueDialog').matches(':modal') && {queue_moving}"))
+            assert js("document.activeElement===$('queueDialog').querySelector('.close') && $('queueItems').querySelector('[aria-current]').textContent==='Track 4'")
+            until(lambda: js("getComputedStyle($('queueDialog')).transform==='none' && getComputedStyle($('queueDialog'),'::backdrop').opacity==='1'"))
+
+        def press_escape():
+            for event in ('keyDown', 'keyUp'):
+                cdp('Input.dispatchKeyEvent', {'type': event, 'key': 'Escape', 'code': 'Escape', 'windowsVirtualKeyCode': 27})
+
+        def click_backdrop():
+            for event in ('mousePressed', 'mouseReleased'):
+                cdp('Input.dispatchMouseEvent', {'type': event, 'x': 8, 'y': 60, 'button': 'left', 'clickCount': 1})
+
+        for dismiss in (lambda: js(queue_close), press_escape, click_backdrop):
+            open_queue()
+            dismiss()
+            until(lambda: js(f"!$('queueDialog').open && {queue_moving}"))
+            assert js("""(() => {
+              const el=$('viewQueue'), d=$('queueDialog'), r=el.getBoundingClientRect();
+              const backdrop=getComputedStyle(d,'::backdrop');
+              return document.activeElement===el && el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)) &&
+                backdrop.opacity>0 && backdrop.opacity<1;
+            })()""")
+            until(lambda: js(queue_hidden))
+
+        open_queue()
+        js(queue_close)
+        until(lambda: js(queue_moving))
+        js(queue_open)
+        until(lambda: js("$('queueDialog').matches(':modal') && getComputedStyle($('queueDialog')).transform==='none'"))
+        cdp('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-reduced-motion', 'value': 'reduce'}]})
+        assert js(f"{queue_close}; {queue_hidden}")
+        assert js(f"{queue_open}; $('queueDialog').matches(':modal') && getComputedStyle($('queueDialog')).transform==='none' && !$('queueDialog').getAnimations().length")
+        assert js("""(() => {
+          const queue=$('queueItems'), style=getComputedStyle(queue), library=getComputedStyle($('rows'));
+          return queue.scrollHeight>queue.clientHeight && style.scrollbarWidth==='thin' &&
+            style.scrollbarColor!=='auto' && style.scrollbarColor===library.scrollbarColor;
+        })()""")
+        assert js(f"{queue_close}; {queue_hidden}")
+        print('OK: overflowing queue scrollbar matches the library')
+        print('OK: queue slide/fade, all native close routes, reopening during exit and reduced motion')
+
+        assert js("""(() => {
+          window.sourceCommands=[];
+          send=message=>{sourceCommands.push(message); return true;};
+          renderSources([{id:'web',name:'Web',hasHome:true},
+            {id:'demo',name:'Demo',page:true,hasHome:false,icon:'icon.svg',revision:'42'}]);
+          const [web, demo]=$('sources').children;
+          web.click();
+          if (sourceCommands.pop()!=='source web' || !$('sourceView').hidden) return false;
+          showPlaybackError({code:'auth_required',source:'demo',message:'Login required'});
+          $('toast').querySelector('button').click();
+          const frame=$('sourceView').firstElementChild;
+          if (!frame || frame.sandbox.value!=='allow-scripts' || frame.src!=='https://demo.source.bilimusic.local/index.html?v=42' ||
+              !$('collection').hidden || document.querySelector('footer').hidden || demo.getAttribute('aria-current')!=='page' ||
+              !demo.querySelector('img').src.endsWith('/icon.svg?v=42')) return false;
+          const request={type:'source-request',id:'client',action:'status',data:{detail:'中文'}};
+          dispatchEvent(new MessageEvent('message',{data:request,origin:'null',source:window}));
+          if (sourceCommands.length) return false;
+          dispatchEvent(new MessageEvent('message',{data:request,origin:'null',source:frame.contentWindow}));
+          if (sourceCommands.join()!=='source-page demo 1 status {"detail":"中文"}') return false;
+          renderSources([{id:'web',name:'Web',hasHome:true,revision:'updated'},
+            {id:'demo',name:'Demo',page:true,hasHome:false,icon:'icon.svg',revision:'42'}]);
+          if ($('sourceView').firstElementChild !== frame) return false;
+          replyToSourcePage('wrong-id','{}','');
+          if (!sourcePage.request) return false;
+          replyToSourcePage('1','{}','');
+          if (sourcePage.request) return false;
+          renderSources([{id:'web',name:'Web',hasHome:true}]);
+          return $('sourceView').hidden && !$('collection').hidden && !frame.isConnected && $('heading').textContent==='全部音乐';
+        })()""")
+        print('OK: external and embedded source navigation, icon, auth shortcut, scoped messages and plugin removal')
     finally:
         if ws:
             try:

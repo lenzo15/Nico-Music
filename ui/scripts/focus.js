@@ -32,7 +32,7 @@ function createFocusView() {
   menu.addEventListener("focusout", e => {
     if (e.relatedTarget !== tool && !menu.contains(e.relatedTarget)) hideMenu();
   });
-  let catalogue = "", generation = 0, instance, sheet, lifecycle, listening = false;
+  let catalogue = "", generation = 0, instance, sheet, lifecycle, pending, listening = false;
   function discover(presets) {
     const key = JSON.stringify(presets);
     if (catalogue === key) return;
@@ -53,7 +53,7 @@ function createFocusView() {
         if (selected === id) return;
         preferred = selected = id;
         try { localStorage.setItem("focusPreset", id); } catch {}
-        mount();
+        labelPicker(); mount(true);
       };
       picker.append(b);
     }
@@ -94,7 +94,9 @@ function createFocusView() {
   }
   function failed(error) {
     console.warn("Focus preset unavailable:", error);
-    stop(); selected = ""; labelPicker(); basic(); toast("预设无法加载，已切换到简洁模式");
+    stop();
+    if (!pending) { selected = ""; labelPicker(); }
+    basic(); toast("预设无法加载，已切换到简洁模式");
   }
   function asset(el, url) {
     return new Promise((resolve, reject) => {
@@ -103,15 +105,46 @@ function createFocusView() {
       document.head.append(el);
     });
   }
-  async function mount() {
-    stop(); basic(); labelPicker();
-    const id = selected, token = generation;
-    if (!id) return;
+  function cancelMount() {
+    pending?.sheet?.remove(); pending = undefined;
+  }
+  function activate(id, create, style) {
+    stop();
+    if (!create) { basic(); update(); return; }
+    const token = generation;
+    sheet = style; sheet.media = "all"; document.body.dataset.focusPreset = id;
+    lifecycle = new AbortController();
+    instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => { const t = current(); if (t) cover(el, t); },
+      requestLevels(on, options) {
+        if (generation !== token) return;
+        const want = !!on && !document.hidden && !reduceMotion.matches && !!state.playing && !state.paused;
+        const mode = want && (options?.spectrum ? "spectrum" : "on");
+        if (mode !== listening) { listening = mode; send(mode ? `levels ${mode} ${id}` : "levels off"); }
+      }
+    });
+    if (typeof instance?.update !== "function") throw new Error("missing update");
+    update();
+  }
+  async function mount(animate = false) {
+    cancelMount();
+    const id = selected, load = pending = {};
+    function commit(create, error) {
+      if (pending !== load || !isOpen()) return;
+      const apply = () => {
+        if (pending !== load) return;
+        pending = undefined;
+        if (error) { load.sheet?.remove(); failed(error); return; }
+        try { activate(id, create, load.sheet); } catch (error) { failed(error); }
+      };
+      if (animate) runTransition("preset", apply); else apply();
+    }
+    if (!id) { commit(); return; }
     const base = `https://${id}.focus.bilimusic.local/`;
     const version = revisions.get(id) ? "?v=" + encodeURIComponent(revisions.get(id)) : "";
     try {
-      sheet = document.createElement("link"); sheet.rel = "stylesheet"; sheet.media = "not all";
-      const css = asset(sheet, base + "style.css" + version);
+      // Keep the old scene and its audio subscription until the replacement is ready.
+      load.sheet = document.createElement("link"); load.sheet.rel = "stylesheet"; load.sheet.media = "not all";
+      const css = asset(load.sheet, base + "style.css" + version);
       if (!factories.has(id)) {
         const script = document.createElement("script");
         factories.set(id, asset(script, base + "preset.js" + version).then(() => {
@@ -120,20 +153,8 @@ function createFocusView() {
         }).finally(() => script.remove()));
       }
       const [, create] = await Promise.all([css, factories.get(id)]);
-      if (generation !== token) return;
-      root.replaceChildren(); sheet.media = "all"; document.body.dataset.focusPreset = id;
-      lifecycle = new AbortController();
-      instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => { const t = current(); if (t) cover(el, t); },
-        requestLevels(on, options) {
-          if (generation !== token) return;
-          const want = !!on && !document.hidden && !reduceMotion.matches && !!state.playing && !state.paused;
-          const mode = want && (options?.spectrum ? "spectrum" : "on");
-          if (mode !== listening) { listening = mode; send(mode ? `levels ${mode} ${id}` : "levels off"); }
-        }
-      });
-      if (typeof instance?.update !== "function") throw new Error("missing update");
-      update();
-    } catch (error) { if (generation === token) failed(error); }
+      commit(create);
+    } catch (error) { commit(null, error); }
   }
   function update() {
     const t = current(); trigger.disabled = !t;
@@ -155,23 +176,65 @@ function createFocusView() {
     try { instance.update({title: trackLabel.textContent, playing, progress: state.duration > 0 ? Math.max(0, Math.min(1, state.elapsed/state.duration)) : 0}); }
     catch (error) { failed(error); }
   }
-  function open() {
-    if (!current() || !panel.hidden) return;
-    shell.hidden = true; panel.hidden = background.hidden = false;
-    trigger.setAttribute("aria-expanded", "true"); mount(); update(); panel.focus();
+  function showFocus(show) {
+    if (show) {
+      if (!current()) return; // Playback may have ended while taking the snapshot.
+      shell.hidden = true; panel.hidden = background.hidden = false;
+      trigger.setAttribute("aria-expanded", "true"); basic();
+      if (selected) mount();
+      update(); panel.focus();
+    } else {
+      hideMenu(); cancelMount(); stop(); panel.hidden = background.hidden = true; shell.hidden = false;
+      trigger.setAttribute("aria-expanded", "false"); (trigger.disabled ? $("query") : trigger).focus();
+    }
   }
-  function close() {
-    if (panel.hidden) return;
-    hideMenu(); stop(); panel.hidden = background.hidden = true; shell.hidden = false;
-    trigger.setAttribute("aria-expanded", "false"); (trigger.disabled ? $("query") : trigger).focus();
+  const transitionStyle = document.documentElement.dataset;
+  let transition, requested;
+  const isOpen = () => requested ?? !panel.hidden;
+  function clearTransition() {
+    transition?.skipTransition();
+    transition = requested = undefined;
+    delete transitionStyle.focusTransition;
   }
-  trigger.onclick = () => panel.hidden ? open() : close();
+  function runTransition(kind, apply, openRequest) {
+    clearTransition();
+    if (reduceMotion.matches || document.hidden || !document.startViewTransition) return apply();
+
+    // Capture the outgoing scene (including preset background) before changing the live UI.
+    transitionStyle.focusTransition = kind;
+    const next = document.startViewTransition(() => {
+      // A skipped transition still calls its updater; ignore superseded requests.
+      if (transition !== next) return;
+      requested = undefined;
+      if (kind === "preset") transitionStyle.focusTransition = "preset-live";
+      apply();
+    });
+    transition = next;
+    requested = openRequest;
+    const clear = () => { if (transition === next) clearTransition(); };
+    next.finished.then(clear, clear);
+  }
+  function setOpen(show) {
+    if (show === isOpen() || (show && !current())) return;
+    if (show === !panel.hidden) {
+      clearTransition();
+      if (show && pending) mount(true); // A reversed exit may have delayed the preset swap.
+      return;
+    }
+    runTransition(show ? "enter" : "exit", () => showFocus(show), show);
+  }
+  const open = () => setOpen(true), close = () => setOpen(false);
+  trigger.onclick = () => isOpen() ? close() : open();
   $("focusBack").onclick = close;
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !menu.hidden) { e.preventDefault(); hideMenu(true); return; }
-    if (!panel.hidden && e.key === "Escape" && !document.querySelector("dialog[open]")) { e.preventDefault(); close(); }
+    if (isOpen() && e.key === "Escape" && !document.querySelector("dialog[open]")) { e.preventDefault(); close(); }
   });
-  document.addEventListener("visibilitychange", update); reduceMotion.addEventListener("change", update);
+  document.addEventListener("visibilitychange", update);
+  reduceMotion.addEventListener("change", () => {
+    if (reduceMotion.matches) transition?.skipTransition();
+    update();
+  });
   return {open, close, update, discover, levels(value, spectrum) {
     try { if (listening) instance?.levels?.(value, spectrum); } catch (error) { failed(error); }
   }};

@@ -1,4 +1,5 @@
 #pragma once
+#include "plugin_version.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -7,7 +8,7 @@
 
 // Visual presets are distinct from source.ini/yt-dlp packages. Only expose
 // the preset's focus/ resources, never the install or user profile directory.
-struct FocusPreset { std::string id, name; std::filesystem::path folder; };
+struct FocusPreset { std::string id, name, version; std::filesystem::path folder; };
 inline std::vector<FocusPreset> findFocusPresets(const std::filesystem::path& root) {
     namespace fs = std::filesystem;
     std::vector<FocusPreset> result;
@@ -26,7 +27,10 @@ inline std::vector<FocusPreset> findFocusPresets(const std::filesystem::path& ro
             if (line.rfind("name=", 0) == 0) name = line.substr(5);
             if (line.rfind("api=", 0) == 0) api = line.substr(4);
         }
-        if (api == "1" && !name.empty()) result.push_back({id, name, folder});
+        if (api == "1" && !name.empty()) {
+            auto version = readPluginVersion(it->path());
+            if (version) result.push_back({id, name, *version, folder});
+        }
     }
     std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.id < b.id; });
     return result;

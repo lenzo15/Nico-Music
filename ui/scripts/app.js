@@ -168,6 +168,7 @@ $("createWithSong").onclick = () => { $("assignDialog").close(); openCreate(assi
 refreshListNav();
 function select(p) {
   focusView.close();
+  closeSourcePage();
   page = p;
   document
     .querySelectorAll("nav [data-page]")
@@ -194,16 +195,21 @@ $("shareMix").onclick = () => {
   const name = currentList()?.name || (page === "likes" ? "我喜欢的" : "全部音乐");
   send(`mix-export ${name.replace(/[\t\r\n]/g, " ")}\t${shared.join(" ")}`);
 };
+function unusedListName(raw) {
+  const base = raw.trim().slice(0, 60) || "导入歌单";
+  let name = base;
+  for (let i=2; lists.items.some(l => l.name === name); i++) {
+    const suffix = ` (${i})`; name = base.slice(0, 60-suffix.length) + suffix;
+  }
+  return name;
+}
 function previewMix(mix) {
   if (!lists || pendingImport || pendingMutation || editHistory?.busy ||
       document.querySelector("dialog[open]:not(#addDialog):not(#mixDialog)")) {
     send("mix-cancel " + mix.token); toast("请先完成当前操作再导入歌单"); return;
   }
   mixToken = mix.token;
-  let name = mix.name.trim();
-  for (let i=2; lists.items.some(l => l.name === name); i++) {
-    const suffix = ` (${i})`; name = mix.name.trim().slice(0,60-suffix.length) + suffix;
-  }
+  const name = unusedListName(mix.name);
   $("mixCurrent").dataset.page = page;
   $("mixCurrent").textContent = currentList() ? "导入当前歌单" : page === "likes" ? "加入我喜欢的" : "仅加入音乐库";
   $("mixCurrent").title = currentList() ? `导入到「${currentList().name}」` : $("mixCurrent").textContent;
@@ -234,13 +240,15 @@ async function reviewCollection(preview) {
   const request = pendingImport;
   let accepted = false;
   try {
-    if (request && $("addDialog").open) {
+    if (request?.sourceView && request.sourceView === sourcePage && preview.source === sourcePage.source.id) {
+      accepted = await confirmCollection(sourcePage.source.name, preview, `新建「${request.mixName}」。不会覆盖已有歌单。`);
+    } else if (request && !request.sourceView && $("addDialog").open) {
       const destination = request.page === "library" ? "全部音乐" :
         request.page === "likes" ? "我喜欢的" : lists?.find(request.page)?.name;
-      if (destination) accepted = await confirmPluginCollection(preview, destination);
+      if (destination) accepted = await confirmCollection(sourceItems.get(preview.source)?.name || preview.source, preview, `加入「${destination}」。`);
     }
   } catch (err) { toast(err.message || "无法显示音源确认界面"); }
-  accepted = accepted && request === pendingImport && $("addDialog").open;
+  accepted = accepted && request === pendingImport && (request.sourceView ? request.sourceView === sourcePage : $("addDialog").open);
   send(`collection-decision ${preview.id} ${accepted ? "accept" : "cancel"}`);
   if (!accepted && request === pendingImport) {
     pendingImport = null;
@@ -346,34 +354,163 @@ $("projectLink").onclick = (e) => {
   send("project");
 };
 const builtinFileTypes = $("localFile").accept.split(",");
-let sourceSignature;
+let sourceSignature, sourcePage, sourceRequestSerial = 0;
+const sourceItems = new Map();
+function sourceUrl(s, file) {
+  return `https://${s.id}.source.bilimusic.local/${encodeURIComponent(file)}?v=${encodeURIComponent(s.revision || "")}`;
+}
+function closeSourcePage() {
+  if (!sourcePage) return;
+  if (pendingImport?.sourceView === sourcePage && $("sourceImportDialog").open) $("sourceImportDialog").close("cancel");
+  clearTimeout(sourcePage.request?.timer);
+  sourcePage = undefined;
+  $("sourceView").replaceChildren(); $("sourceView").hidden = true;
+  $("sourceHome").hidden = true; $("shareMix").hidden = false; $("collection").hidden = false;
+  $("sources").querySelector(".selected")?.classList.remove("selected");
+  $("sources").querySelector('[aria-current="page"]')?.removeAttribute("aria-current");
+}
+function openSourcePage(s, navigate = true) {
+  if (!s.page) return;
+  if (navigate) focusView.close();
+  if (sourcePage?.source === s) return;
+  // Refresh the frame, not the user's navigation context or an open host confirmation.
+  const refresh = !navigate && s.id === sourcePage?.source.id;
+  if (!refresh) closeSourcePage();
+  const frame = document.createElement("iframe");
+  frame.title = s.name; frame.setAttribute("sandbox", "allow-scripts");
+  frame.src = sourceUrl(s, "index.html");
+  if (refresh) {
+    clearTimeout(sourcePage.request?.timer);
+    Object.assign(sourcePage, {source:s, frame, request:undefined});
+  } else sourcePage = {source:s, frame};
+  for (const b of document.querySelectorAll("nav [data-page]")) b.classList.remove("selected");
+  s.button.classList.add("selected"); s.button.setAttribute("aria-current", "page");
+  $("heading").textContent = s.name;
+  $("collection").hidden = $("shareMix").hidden = $("deleteList").hidden = true;
+  sourceProfile(null);
+  $("sourceView").hidden = false; $("sourceView").replaceChildren(frame);
+}
+function sourceProfile(url) {
+  sourcePage.profile = url;
+  const label = url ? "在浏览器打开我的主页" : "在浏览器打开来源主页";
+  $("sourceHome").title = $("sourceHome").ariaLabel = label;
+  $("sourceHome").hidden = !url && !sourcePage.source.hasHome;
+}
+$("sourceHome").onclick = () => {
+  if (sourcePage?.profile) send("source-profile " + sourcePage.source.id + " " + sourcePage.profile);
+  else if (sourcePage?.source.hasHome) send("source " + sourcePage.source.id);
+};
+function replyToSourcePage(id, data, error) {
+  const view = sourcePage;
+  if (!view?.request || view.request.id !== id) return;
+  clearTimeout(view.request.timer);
+  view.frame.contentWindow?.postMessage({type: "source-response", id: view.request.client, data, error}, "*");
+  view.request = undefined;
+}
+window.addEventListener("message", event => {
+  const view = sourcePage, msg = event.data;
+  if (!view || event.source !== view.frame.contentWindow || event.origin !== "null" || !msg) return;
+  if (msg.type === "source-profile" || msg.type === "source-collection") {
+    // Never execute arbitrary page commands or let a frame open a browser. The header button
+    // and the host-managed collection preview require a separate user decision.
+    const url = msg.url;
+    if (msg.type === "source-profile" && url === null) { sourceProfile(null); return; }
+    if (typeof url !== "string" || url.length > 2048 || !/^https:\/\/[^\s\\]+$/.test(url)) return;
+    if (msg.type === "source-profile") { sourceProfile(url); return; }
+    if (!lists || pendingImport || pendingMutation || editHistory?.busy || document.querySelector("dialog[open]"))
+      return toast("请先完成当前操作再导入歌单");
+    if (typeof msg.name !== "string" || !msg.name.trim()) return;
+    pendingImport = {sourceView:view, mixName:unusedListName(msg.name), collection:true};
+    if (!send(`source-collection ${view.source.id} ${url}`)) { pendingImport = null; toast("无法连接播放器"); }
+    else toast("正在读取来源歌单…");
+    return;
+  }
+  if (msg.type !== "source-request") return;
+  if (typeof msg.id !== "string" || msg.id.length > 64 || typeof msg.action !== "string" ||
+      !/^[a-z0-9_-]{1,64}$/.test(msg.action)) return;
+  let data;
+  try { data = JSON.stringify(msg.data ?? null); } catch { return; }
+  if (new TextEncoder().encode(data).length > 16384 || view.request) {
+    return event.source.postMessage({type: "source-response", id: msg.id, error: "请求过大或已有请求正在处理"}, "*");
+  }
+  const id = String(++sourceRequestSerial);
+  view.request = {id, client: msg.id, timer: setTimeout(() => replyToSourcePage(id, "", "来源页面请求超时"), 16000)};
+  if (!send(`source-page ${view.source.id} ${id} ${msg.action} ${data}`)) replyToSourcePage(id, "", "无法连接播放器");
+});
+function showPlaybackError(failure) {
+  const source = sourceItems.get(failure.source);
+  if (failure.code === "auth_required" && sourceCredentials.has(failure.source)) {
+    toast(failure.message, {label: "配置登录", run: () => sourceCredentials.open(failure.source)});
+    return;
+  }
+  toast(failure.message, failure.code === "auth_required" && source?.page
+    ? {label: "打开来源", run: () => { const current = sourceItems.get(source.id); if (current?.page) openSourcePage(current); }} : null);
+}
 function renderSources(sources) {
   const signature = JSON.stringify(sources);
   if (signature === sourceSignature) return;
   sourceSignature = signature;
-  $("sources").replaceChildren();
+  const activeId = sourcePage?.source.id;
+  const previous = new Map(sourceItems);
+  sourceItems.clear();
   $("localFile").accept = [...new Set([...builtinFileTypes, ...sources.flatMap(s => s.extensions || [])])].join(",");
   for (const s of sources) {
-    if (s.hasHome === false) continue;
+    if (!/^[a-z0-9-]{1,64}$/.test(s.id) || (!s.page && s.hasHome === false)) continue;
+    const key = JSON.stringify(s), existing = previous.get(s.id);
+    if (existing?.key === key) {
+      sourceItems.set(s.id, existing); continue;
+    }
     const b = document.createElement("button");
-    b.className = "source";
+    b.type = "button"; b.className = "source";
+    const source = {...s, button: b, key}; sourceItems.set(s.id, source);
     b.style.width = "100%";
     b.title = s.name;
     b.setAttribute("aria-label", s.name);
-    b.innerHTML = '<i>' + icon("globe") + '</i>';
-    b.append(document.createTextNode(s.name));
-    const arrow = document.createElement("i");
-    arrow.className = "trail";
-    arrow.innerHTML = icon("external");
-    b.append(arrow);
-    b.onclick = () => send("source " + s.id);
-    $("sources").append(b);
+    const leading = document.createElement("i");
+    const globe = () => { leading.innerHTML = icon("globe"); };
+    if (s.icon) {
+      const image = document.createElement("img"); image.className = "sourceIcon"; image.alt = "";
+      image.onerror = globe; image.src = sourceUrl(s, s.icon); leading.append(image);
+    } else globe();
+    b.append(leading, document.createTextNode(s.name));
+    if (!s.page) {
+      const arrow = document.createElement("i"); arrow.className = "trail";
+      arrow.innerHTML = icon("external"); b.append(arrow);
+    }
+    b.onclick = () => s.page ? openSourcePage(source) : send("source " + s.id);
   }
-  $("sourcePanel").hidden = !$("sources").childElementCount;
+  const nav = $("sources");
+  for (const [id, item] of previous) if (sourceItems.get(id) !== item) item.button.remove();
+  let next = nav.firstElementChild;
+  for (const {button} of sourceItems.values()) {
+    if (button !== next) nav.insertBefore(button, next);
+    next = button.nextElementSibling;
+  }
+  $("sourcePanel").hidden = !nav.childElementCount;
+  if (activeId) {
+    const active = sourceItems.get(activeId);
+    if (active?.page) openSourcePage(active, false); else select(page);
+  }
 }
 function current() {
   const track = tracks[state.index];
   return track?.hidden ? undefined : track;
+}
+function trackItemTitle(track, strong = false) {
+  const line = document.createElement("span"), name = document.createElement(strong ? "strong" : "span");
+  line.className = "trackItemTitle";
+  name.textContent = title(track);
+  line.append(name);
+  if (track.playbackWarning) {
+    const mark = document.createElement("i");
+    mark.className = "playbackWarning";
+    mark.title = track.playbackWarning;
+    mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "上次播放失败：" + track.playbackWarning);
+    mark.innerHTML = icon("warning");
+    line.append(mark);
+  }
+  return line;
 }
 // The queue belongs to the player, not to the page being browsed.
 let drawnQueue, drawnTracks;
@@ -388,7 +525,8 @@ function renderQueue() {
       const li = document.createElement("li"), b = document.createElement("button");
       b.type = "button";
       b.dataset.index = index;
-      b.title = b.textContent = title(track);
+      b.title = title(track);
+      b.append(trackItemTitle(track));
       b.onclick = () => send("playqueued " + track.url);
       li.append(b); rows.append(li);
     }
@@ -491,9 +629,12 @@ function refreshBatch(visible) {
   all.indeterminate = count > 0 && !all.checked;
   $("batchCount").textContent = `已选 ${count} 首`;
   for (const id of ["batchPlay", "batchAdd", "batchFav", "batchRemove"]) $(id).disabled = !count;
-  $("batchFav").textContent = page === "likes" || (count && [...picked].every(u => fav.has(u))) ? "取消喜欢" : "喜欢";
-  $("batchRemove").hidden = page === "likes";
-  $("batchRemove").textContent = currentList() ? "移出歌单" : "从音乐库移除";
+  const heart = $("batchFav"), remove = $("batchRemove");
+  const allLiked = page === "likes" || (count > 0 && [...picked].every(u => fav.has(u)));
+  heart.classList.toggle("on", allLiked);
+  heart.title = heart.ariaLabel = allLiked ? "取消喜欢" : "喜欢";
+  remove.hidden = page === "likes";
+  remove.title = remove.ariaLabel = currentList() ? "移出歌单" : "从音乐库移除";
 }
 $("batchAll").onchange = () => {
   const checked = $("batchAll").checked;
@@ -611,11 +752,9 @@ function renderRows() {
     const info = document.createElement(batch ? "span" : "button");
     info.className = "rowText";
     if (!batch) info.onclick = () => playFromPage(i);
-    const n = document.createElement("strong");
-    n.textContent = title(t);
     const sub = document.createElement("small");
     sub.textContent = source(t);
-    info.append(n, sub);
+    info.append(trackItemTitle(t, true), sub);
     row.append(sleeve, info);
     $("rows").append(row);
     if (batch) { reorderHandles.attach(row, t.url, title(t)); return; }
@@ -745,6 +884,7 @@ function sync() {
 }
 const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
 const appSettings = createSettings({shortcuts: playbackShortcuts, send, notify: toast, desktop: !!bridge});
+const sourceCredentials = createSourceCredentials({send, desktop: !!bridge});
 editHistory = createEditHistory({storage: localStorage, snapshot: membershipSnapshot, restore: restoreMembership,
   blocked: () => pendingMutation || !!pendingImport,
   applyNative: (id, direction) => new Promise((resolve, reject) => {
@@ -773,6 +913,7 @@ const updateChecker = createUpdateChecker({send, notify: toast, desktop: !!bridg
   storage: {getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)}});
 bridge?.addEventListener("message", (e) => {
   const msg = e.data;
+  if (msg.sourceCredential) { sourceCredentials.reply(msg.sourceCredential); return; }
   if (msg.mixPreview) { previewMix(msg.mixPreview); return; }
   if (msg.mixNotice) { toast(msg.mixNotice); return; }
   let createdList;
@@ -794,7 +935,15 @@ bridge?.addEventListener("message", (e) => {
     try { localStorage.setItem("repeatMode", msg.repeat); } catch {}
   }
   state = { ...state, ...msg };
-  if (msg.sources) renderSources(msg.sources);
+  if (msg.sources) {
+    renderSources(msg.sources);
+    sourceCredentials.discover(msg.sources);
+  }
+  if (msg.sources || msg.focusPresets) appSettings.plugins(state.sources || [], state.focusPresets || []);
+  if (msg.sourcePageReply) {
+    const {id, data, error} = msg.sourcePageReply;
+    replyToSourcePage(id, data, error);
+  }
   if (msg.tracks) {
     tracks = msg.tracks;
     hiddenTrackCount = tracks.reduce((n, t) => n + (t.hidden ? 1 : 0), 0);
@@ -808,7 +957,9 @@ bridge?.addEventListener("message", (e) => {
       catch { toast("歌单更新失败"); }
     }
   }
-  if (msg.importFailed) document.querySelector("dialog.pluginConfirm[open]")?.close();
+  if (msg.importFailed) {
+    if ($("sourceImportDialog").open) $("sourceImportDialog").close("cancel");
+  }
   if (msg.collectionPreview) reviewCollection(msg.collectionPreview);
   if (msg.collectionPending && pendingImport) pendingImport.collection = true;
   $("importStatus").hidden = !(pendingImport?.collection && !msg.imported && !msg.importFailed);
@@ -823,14 +974,14 @@ bridge?.addEventListener("message", (e) => {
     } else toast(msg.error); // An unrelated playback error is not an import response.
   }
   if (msg.imported && pendingImport) {
-    const {page: target, url, mixName, priorOrder} = pendingImport;
+    const {page: target, url, mixName, priorOrder, sourceView} = pendingImport;
     const urls = msg.importedUrls || [url];
     pendingImport = null;
     let notice = "已加入音乐库";
     if (mixName) {
       try {
         createdList = lists.create(mixName, urls); trackOrder.save(createdList, urls);
-        refreshListNav(); select(createdList); notice = "已导入分享歌单";
+        refreshListNav(); select(createdList); notice = sourceView ? "已导入来源歌单" : "已导入分享歌单";
       } catch { notice = "已加入音乐库，但无法完整保存歌单或排序"; }
     } else if (target === "likes") {
       notice = updateLikes(urls, true) ? "已加入我喜欢的" : "";
@@ -867,6 +1018,7 @@ bridge?.addEventListener("message", (e) => {
     editHistory.record({label: `${label}（${edit.count} 首）`, nativeId: edit.id, createdList, before: editBefore, after});
     if (msg.error) toast(msg.error); // Error messages are never suppressed by the preference.
   }
+  if (msg.playbackError) showPlaybackError(msg.playbackError);
   sync();
   editHistory.refresh();
   if (msg.historyResult && nativeHistoryRequest && msg.historyResult.id === nativeHistoryRequest.id &&

@@ -16,6 +16,11 @@ cmake_install.cmake
 *.ilk
 *.res
 
+# Independently distributed plugin and its private tests (keep local copies)
+/plugins/netease/
+/tests/netease.py
+/tests/netease_*
+
 # Local design notes and references (not project documentation)
 /.docs/
 

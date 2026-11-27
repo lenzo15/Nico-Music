@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://*.focus.bilimusic.local; style-src 'self' 'unsafe-inline' https://*.focus.bilimusic.local; img-src 'self' https: http:; object-src 'none'; frame-src https://*.collection.bilimusic.local; base-uri 'none'"
+      content="default-src 'self'; script-src 'self' https://*.focus.bilimusic.local; style-src 'self' 'unsafe-inline' https://*.focus.bilimusic.local; img-src 'self' https: http:; object-src 'none'; frame-src https://*.source.bilimusic.local; base-uri 'none'"
     />
     <title>NicoMusic · 音乐空间</title>
     <link rel="stylesheet" href="styles/style.css" />
@@ -18,6 +18,7 @@
     <script defer src="scripts/hotkey-bindings.js"></script>
     <script defer src="scripts/shortcuts.js"></script>
     <script defer src="scripts/settings.js"></script>
+    <script defer src="scripts/source-credentials.js"></script>
     <script defer src="scripts/edit-history.js"></script>
     <script defer src="scripts/updates.js"></script>
     <script defer src="scripts/collection-confirm.js"></script>
@@ -34,7 +35,7 @@
       </div>
     </header>
     <div class="shell">
-      <aside>
+      <aside class="slimScrollbar">
         <nav>
           <button data-page="library" class="selected">
             <i data-icon="library"></i>全部音乐<span id="libCount" class="badge"
@@ -43,7 +44,7 @@
           ><button data-page="likes"><i data-icon="heart"></i>我喜欢的</button>
         </nav>
         <div class="listHead"><span>我的歌单</span><button id="newList" class="icon" title="新建歌单" aria-label="新建歌单"><i data-icon="plus"></i></button></div>
-        <nav id="listNav" aria-label="我的歌单"></nav>
+        <nav id="listNav" class="slimScrollbar" aria-label="我的歌单"></nav>
         <section id="sourcePanel" hidden>
           <div class="navlabel sourceLabel">来源</div>
           <div id="sources"></div>
@@ -71,6 +72,7 @@
           <h1 id="heading">全部音乐</h1>
           <button id="deleteList" class="icon" aria-label="删除歌单" aria-haspopup="dialog" aria-controls="deleteListDialog" hidden><i data-icon="trash"></i></button>
           <button id="shareMix" class="icon" title="分享歌单" aria-label="分享歌单"><i data-icon="share"></i></button>
+          <button type="button" id="sourceHome" class="icon" title="在浏览器打开来源主页" aria-label="在浏览器打开来源主页" hidden><i data-icon="external"></i></button>
           <button id="topAdd" class="icon addLink" aria-label="添加链接">
             <i data-icon="plus"></i>
           </button>
@@ -88,13 +90,14 @@
             <div id="batchBar" role="group" aria-label="歌曲批量操作" hidden>
               <label><input id="batchAll" type="checkbox">全选</label>
               <small id="batchCount" aria-live="polite">已选 0 首</small>
-              <button id="batchPlay" class="subtle">播放</button>
-              <button id="batchAdd" class="subtle">加入歌单</button>
-              <button id="batchFav" class="subtle">喜欢</button>
-              <button id="batchRemove" class="subtle"></button>
+              <button type="button" id="batchPlay" class="icon" title="播放" aria-label="播放"><i data-icon="play"></i></button>
+              <button type="button" id="batchAdd" class="icon" title="加入歌单" aria-label="加入歌单"><i data-icon="plus"></i></button>
+              <button type="button" id="batchFav" class="icon" title="喜欢" aria-label="喜欢"><i data-icon="heart"></i></button>
+              <button type="button" id="batchRemove" class="icon" title="从音乐库移除" aria-label="从音乐库移除"><i data-icon="trash"></i></button>
             </div>
             <div id="rows" tabindex="0" role="region" aria-label="歌曲列表"></div>
           </section>
+          <section id="sourceView" aria-labelledby="heading" hidden></section>
         </div>
       </main>
     </div>
@@ -108,7 +111,7 @@
         </button>
         <div id="focusPresetMenu" class="presetMenu" hidden>
           <div class="presetHeading" id="presetHeading">专注预设</div>
-          <div id="focusPreset" role="menu" aria-labelledby="presetHeading"></div>
+          <div id="focusPreset" class="slimScrollbar" role="menu" aria-labelledby="presetHeading"></div>
         </div>
       </div>
       <div id="focusContent"></div>
@@ -222,6 +225,16 @@
         <button type="button" id="confirmDeleteList" class="primary">删除歌单</button>
       </div>
     </dialog>
+    <dialog id="sourceImportDialog" class="sheet" aria-labelledby="sourceImportTitle" aria-describedby="sourceImportSummary">
+      <form method="dialog">
+        <h2 id="sourceImportTitle">导入来源歌单</h2>
+        <p id="sourceImportSummary"></p>
+        <div class="actions">
+          <button id="sourceImportCancel" class="subtle" value="cancel" autofocus>取消</button>
+          <button id="sourceImportAccept" class="primary" value="accept">确认导入</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="mixDialog" class="sheet" aria-labelledby="mixTitle" aria-describedby="mixSummary">
       <form id="mixForm">
         <header class="sheetHeader">
@@ -296,12 +309,16 @@
         <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="false" aria-controls="settingsHotkeys" tabindex="-1">热键</button>
         <button type="button" id="settingsTabAbout" data-settings-tab="about" role="tab" aria-selected="false" aria-controls="about" tabindex="-1">关于</button>
       </div>
-      <div id="settingsBody" class="settingsBody">
+      <div id="settingsBody" class="settingsBody slimScrollbar">
       <section id="settingsGeneral" role="tabpanel" aria-labelledby="settingsTabGeneral">
         <section class="generalSection" aria-labelledby="dataFolderTitle">
           <h3 id="dataFolderTitle">本地数据</h3>
           <p>音乐库、自建歌单、收藏及设置保存在数据文件夹中。完整备份前，请先退出播放器。</p>
           <button type="button" id="openDataFolder" class="subtle" disabled>打开数据文件夹</button>
+        </section>
+        <section id="sourceSettings" class="generalSection" aria-labelledby="sourceSettingsTitle" hidden>
+          <h3 id="sourceSettingsTitle">音源设置</h3>
+          <div id="sourceCredentialEntries" class="settingsActions"></div>
         </section>
         <section class="generalSection" aria-labelledby="editHistoryTitle">
           <h3 id="editHistoryTitle">操作提示与撤销</h3>
@@ -352,9 +369,33 @@
         </div>
         <label class="autoUpdate"><input type="checkbox" id="autoUpdate" checked />启动时自动检查更新</label>
       </section>
+      <section aria-labelledby="pluginVersionsTitle">
+        <h3 id="pluginVersionsTitle">已加载插件</h3>
+        <p id="noPluginVersions">暂无已加载的插件</p>
+        <ul id="pluginVersions"></ul>
+      </section>
       </section>
       </div>
       </div>
+    </dialog>
+    <dialog id="sourceCredentialDialog" class="sheet" aria-labelledby="sourceCredentialTitle">
+      <form id="sourceCredentialForm" autocomplete="off">
+        <header class="sheetHeader">
+          <h2 id="sourceCredentialTitle"></h2>
+          <button type="button" class="close icon" aria-label="关闭音源设置"><i data-icon="close"></i></button>
+        </header>
+        <div class="credentialFields slimScrollbar">
+          <p id="sourceCredentialHelp"></p>
+          <label id="sourceCredentialLabel" for="sourceCredentialInput"></label>
+          <input id="sourceCredentialInput" type="password" autocomplete="off" spellcheck="false" maxlength="16384"
+                 aria-describedby="sourceCredentialHelp sourceCredentialStatus" />
+          <p id="sourceCredentialStatus" role="status" aria-live="polite"></p>
+        </div>
+        <div class="actions">
+          <button type="button" id="clearSourceCredential" class="subtle" disabled>清除本地登录</button>
+          <button type="submit" id="saveSourceCredential" class="primary" disabled>保存</button>
+        </div>
+      </form>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>

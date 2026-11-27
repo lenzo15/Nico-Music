@@ -15,7 +15,9 @@ inline PluginFiles pluginFiles(const std::filesystem::path& dir, bool source) {
          !ec && it != end; it.increment(ec)) {
         const auto& p = it->path();
         const auto name = p.filename();
-        if ((source && it.depth() == 0 && name == L"focus") || name == L"__pycache__" || name == L".git" ||
+        const bool reserved = source && it.depth() == 0 && (!_wcsicmp(name.c_str(), L"focus") ||
+            !_wcsicmp(name.c_str(), L"page") || !_wcsicmp(name.c_str(), L"confirm"));
+        if (reserved || name == L"__pycache__" || name == L".git" ||
             (GetFileAttributesW(p.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT)) {
             it.disable_recursion_pending(); continue;
         }
@@ -31,12 +33,29 @@ inline PluginFiles pluginFiles(const std::filesystem::path& dir, bool source) {
 struct PluginSnapshot {
     SourceRegistry sources;
     std::vector<FocusPreset> presets;
-    PluginStamps sourceFiles, focusFiles;
+    PluginStamps sourceFiles, pageFiles, focusFiles;
     explicit PluginSnapshot(const std::filesystem::path& root, bool visual = true) : sources(root) {
-        for (auto& s : sources.all()) sourceFiles.emplace(s.id, pluginFiles(s.folder, true));
+        for (auto& s : sources.all()) {
+            sourceFiles.emplace(s.id, pluginFiles(s.folder, true));
+            if (visual) {
+                auto& files = pageFiles[s.id];
+                const auto dir = s.folder / L"page";
+                const auto attrs = GetFileAttributesW(dir.c_str());
+                if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) && !(attrs & FILE_ATTRIBUTE_REPARSE_POINT))
+                    files = pluginFiles(dir, false);
+            }
+        }
         if (visual) {
             presets = findFocusPresets(root);
-            for (auto& p : presets) focusFiles.emplace(p.id, pluginFiles(p.folder, false));
+            for (auto& p : presets) {
+                auto files = pluginFiles(p.folder, false);
+                // VERSION is outside focus/. Track its stamp without exposing it as a web resource.
+                if (!p.version.empty()) {
+                    const auto marker = p.folder.parent_path() / L"VERSION";
+                    files.emplace(std::filesystem::path{}, std::make_pair(std::filesystem::last_write_time(marker), std::filesystem::file_size(marker)));
+                }
+                focusFiles.emplace(p.id, std::move(files));
+            }
         }
     }
 };

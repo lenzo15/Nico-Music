@@ -76,6 +76,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
           try { localStorage.setItem('nico.autoUpdateCheck','off'); } catch {}
           window.hostBindings=JSON.parse(localStorage.getItem('mock.hotkeys')||'null')||[{modifiers:3,key:37},{modifiers:3,key:39},{modifiers:3,key:32}];
           window.hostCapture=false;
+          window.credentialState={};
           window.nativeMessage=data=>hostListeners.forEach(fn=>fn({data}));
           window.hostSnapshot=(extra={})=>({hotkeyConfig:hostBindings.map(b=>({...b})),hotkeyCapture:hostCapture,hotkeyCaptureRequest:0,hotkeyWarning:'',
             hotkeys:{prev:!hostCapture&&!!hostBindings[0].key,next:!hostCapture&&!!hostBindings[1].key,toggle:!hostCapture&&!!hostBindings[2].key,
@@ -85,7 +86,15 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             hostMessages.push(command);
             setTimeout(()=>{
               if(command.startsWith('ready')) { nativeMessage(hostSnapshot()); nativeMessage({appVersion:'1.0.0'}); }
-              else if(command.startsWith('hotkeys-capture ')) {
+              else if(command.startsWith('source-credential ')) {
+                const [,id,source,op,...value]=command.split(' ');
+                let status=credentialState[source]?'saved':'empty';
+                if(op==='save') {
+                  status=value.join(' ')==='synthetic-session'?'saved':'invalid';
+                  if(status==='saved') credentialState[source]=true;
+                } else if(op==='clear') { delete credentialState[source]; status='empty'; }
+                nativeMessage({sourceCredential:{id,status}});
+              } else if(command.startsWith('hotkeys-capture ')) {
                 const [,mode,request]=command.split(' '); hostCapture=mode==='on';
                 nativeMessage(hostSnapshot({hotkeyCaptureRequest:Number(request)}));
               } else if(command.startsWith('hotkeys-set ')) {
@@ -104,9 +113,51 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js("$('settingsButton').click()")
         assert js("$('settings').open && !$('settingsGeneral').hidden && $('settingsHotkeys').hidden && $('about').hidden && document.activeElement===$('settingsTabGeneral')")
         assert js("JSON.stringify([...document.querySelectorAll('[data-settings-tab]')].map(t=>t.dataset.settingsTab))===JSON.stringify(['general','hotkeys','about'])")
+        js("nativeMessage({sources:[{id:'a',name:'来源 A',version:'1.10.0'}],focusPresets:[{id:'b',name:'预设 B'}]})")
+        assert js("$('noPluginVersions').hidden && $('pluginVersions').children.length===2 && $('pluginVersions').textContent.includes('v1.10.0') && $('pluginVersions').textContent.includes('未声明版本')")
+        js("nativeMessage({sources:[],focusPresets:[]})")
+        assert js("!$('noPluginVersions').hidden && !$('pluginVersions').childElementCount")
         assert js("!$('openDataFolder').disabled")
         js("hostMessages.length=0; $('openDataFolder').click()")
         assert js("JSON.stringify(hostMessages)===JSON.stringify(['open-data-folder']) && $('settings').open")
+        assert js("$('sourceSettings').hidden")
+        js("""window.credentialSources=[
+          {id:'fixture-a',name:'示例 A',page:false,credentialSettings:{title:'示例 A · Cookie',help:'1. 打开网页 <script>\\\\n2. 复制凭据',label:'账户 Cookie',placeholder:'粘贴 Cookie'}},
+          {id:'fixture-b',name:'示例 B',page:false,credentialSettings:{}},
+          {id:'fixture-c',name:'示例 C',page:false}];
+          nativeMessage({sources:credentialSources}); hostMessages.length=0""")
+        x, y = js("""(() => {const button=$('sourceCredentialEntries').firstElementChild; button.scrollIntoView();
+          const r=button.getBoundingClientRect(); return [r.x+r.width/2,r.y+r.height/2];})()""")
+        for kind, buttons in [('mousePressed', 1), ('mouseReleased', 0)]:
+            cdp('Input.dispatchMouseEvent', {'type':kind, 'x':x, 'y':y, 'button':'left', 'buttons':buttons, 'clickCount':1})
+        until(lambda: js("$('sourceCredentialStatus').textContent==='尚未保存登录凭据。'"))
+        assert js("""$('sourceCredentialEntries').children.length===2 && $('sourceCredentialDialog').matches(':modal') &&
+          $('settings').open && $('sourceCredentialDialog').classList.contains('sheet') &&
+          $('sourceCredentialTitle').textContent==='示例 A · Cookie' && document.activeElement===$('sourceCredentialInput') &&
+          $('sourceCredentialHelp').textContent.includes('<script>\\n2. 复制凭据') && !$('sourceCredentialHelp').children.length &&
+          getComputedStyle($('sourceCredentialHelp')).whiteSpace==='pre-line' &&
+          $('sourceCredentialInput').type==='password' && $('sourceCredentialLabel').textContent==='账户 Cookie' &&
+          $('clearSourceCredential').disabled && /^source-credential \\d+ fixture-a status$/.test(hostMessages[0])""")
+        js("$('sourceCredentialInput').value='wrong'; $('sourceCredentialForm').requestSubmit()")
+        until(lambda: js("$('sourceCredentialStatus').hasAttribute('data-error') && $('clearSourceCredential').disabled"))
+        js("$('sourceCredentialInput').value='synthetic-session'; $('sourceCredentialForm').requestSubmit()")
+        until(lambda: js("$('sourceCredentialStatus').textContent.startsWith('已保存') && !$('clearSourceCredential').disabled"))
+        assert js("$('sourceCredentialInput').value==='' && !document.body.textContent.includes('synthetic-session')")
+        js("$('sourceCredentialInput').value='discard-on-close'")
+        key('Escape', 'Escape', vk=27)
+        until(lambda: js("!$('sourceCredentialDialog').open && $('settings').open && $('sourceCredentialInput').value===''"))
+        js("$('settings').close(); nativeMessage({playbackError:{source:'fixture-b',code:'auth_required',message:'需要登录'}})")
+        assert js("$('toast').querySelector('button').textContent==='配置登录'")
+        js("$('toast').querySelector('button').click()")
+        until(lambda: js("$('sourceCredentialStatus').textContent==='尚未保存登录凭据。'"))
+        assert js("$('sourceCredentialTitle').textContent==='示例 B · 登录凭据' && $('clearSourceCredential').disabled")
+        js("$('sourceCredentialDialog').close(); $('settingsButton').click(); $('sourceCredentialEntries').firstElementChild.click()")
+        until(lambda: js("!$('clearSourceCredential').disabled"))
+        js("$('clearSourceCredential').click()")
+        until(lambda: js("$('clearSourceCredential').disabled && $('sourceCredentialStatus').textContent.startsWith('已清除')"))
+        js("nativeMessage({sources:[credentialSources[2]]})")
+        assert js("$('sourceSettings').hidden && !$('sourceCredentialDialog').open && $('settings').open")
+        print('OK: two plugin credential forms, shared sheet style, masked input, isolation, save/clear, Escape and login shortcut')
         js("$('settingsTabHotkeys').click()")
         assert js("!$('settingsHotkeys').hidden && $('hotkey-prev').value==='Ctrl + Alt + ←'")
         assert js("$('hotkeyForm').querySelectorAll('input').length===3 && [...$('hotkeyForm').querySelectorAll('input')].every(i=>i.readOnly)")

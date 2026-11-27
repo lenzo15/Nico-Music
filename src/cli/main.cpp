@@ -114,7 +114,8 @@ class Terminal : public Station {
             help();
         else if (cmd == "sources") {
             if (providers().all().empty()) cout << "未安装来源插件。\n";
-            for (const auto& s : providers().all()) cout << '@' << s.id << "  " << s.name << '\n';
+            for (const auto& s : providers().all()) cout << '@' << s.id << "  " << s.name << "  "
+                << (s.version.empty() ? "未声明版本" : "v" + s.version) << '\n';
         } else if (cmd == "open") {
             if (!arg.empty() && arg[0] != '@') browse(arg);
             else {

@@ -1,6 +1,4 @@
-"""Headless plugin-dialog test using a loopback stand-in for WebView2's virtual hosts."""
-import functools
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+"""Headless regression for the real host dialog and its library decision."""
 import json
 import os
 from pathlib import Path
@@ -8,7 +6,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.request
 import websocket
@@ -16,30 +13,9 @@ import websocket
 repo = Path(__file__).resolve().parents[1]
 browser = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(os.environ['PROGRAMFILES(X86)'])/'Microsoft/Edge/Application/msedge.exe'
 with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-    root = Path(tmp)
-    server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(SimpleHTTPRequestHandler, directory=tmp))
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    host = f'http://127.0.0.1:{server.server_port}'
-    helper = (repo/'ui/scripts/collection-confirm.js').read_text(encoding='utf8')
-    (root/'bridge.js').write_text(helper.replace('https://${source}.collection.bilimusic.local', host+'/${source}'), encoding='utf8')
-    plugin = (repo/'plugins/bilibili/confirm/index.html').read_text(encoding='utf8').replace('https://studio.bilimusic.local', host)
-    for action in ('accept', 'cancel', 'escape'):
-        folder = root/action
-        folder.mkdir()
-        click = f'document.getElementById("{action}").click()' if action != 'escape' else 'dispatchEvent(new KeyboardEvent("keydown", {key:"Escape"}))'
-        # The driver runs inside the sandbox; the parent cannot inspect the iframe DOM.
-        driver = '''addEventListener('message', e => {
-          if (e.data?.type === 'collection-preview' && document.getElementById('summary').textContent.includes('3 首歌曲加入「Test」')) ACTION;
-        });'''.replace('ACTION', click)
-        (folder/'index.html').write_text(plugin.replace('send("ready");', driver+'\nsend("ready");'), encoding='utf8')
-    (root/'index.html').write_text('''<!doctype html><meta charset="utf-8"><body><output>WAIT</output><script src="bridge.js"></script><script>
-      (async()=>{const log=[];for (const source of ['accept','cancel','escape','missing']) {
-        try { log.push(await confirmPluginCollection({source,count:3,play:true},'Test')); }
-        catch { log.push('failed-closed'); }
-      } document.querySelector('output').textContent=log.join(','); })();</script>''', encoding='utf8')
+    page = (repo/'ui/index.html').as_uri()
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-    page = host+'/index.html'
     proc = subprocess.Popen([browser, '--headless=new', '--disable-gpu', '--no-first-run', f'--user-data-dir={tmp}/profile',
                              f'--remote-debugging-port={port}', page], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ws = None
@@ -53,16 +29,54 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             except (OSError, StopIteration): time.sleep(.1)
         else: raise AssertionError('headless test page did not open')
         ws = websocket.create_connection(url, timeout=5, suppress_origin=True)
-        while time.monotonic() < deadline:
-            ws.send(json.dumps({'id':1,'method':'Runtime.evaluate','params':{'expression':"document.querySelector('output')?.textContent"}}))
-            reply = json.loads(ws.recv())['result']['result'].get('value')
-            if reply not in (None, 'WAIT'): break
-            time.sleep(.1)
-        assert reply == 'true,false,false,failed-closed', reply
-        print('OK: Bilibili preview count and destination, accept/cancel/Esc, fail closed without plugin UI')
+        def evaluate(expr):
+            ws.send(json.dumps({'id':1,'method':'Runtime.evaluate','params':{'expression':expr,'awaitPromise':True,'returnByValue':True}}))
+            r = json.loads(ws.recv())['result']
+            assert 'exceptionDetails' not in r, r
+            return r['result'].get('value')
+
+        while not evaluate('document.readyState === "complete"'):
+            assert time.monotonic() < deadline
+            time.sleep(.05)
+        assert evaluate("""(async () => {
+          const commands = [];
+          send = msg => { commands.push(msg); return true; };
+          renderSources([{id:"demo",name:"示例",hasHome:true}]);
+          $("addDialog").showModal();
+          for (const choice of ["accept","cancel","dismiss","stale"]) {
+            pendingImport = {page:"library"};
+            const done = reviewCollection({id:"1",source:"demo",count:3,play:true});
+            const dialog = $("sourceImportDialog");
+            if (!dialog.open || dialog.querySelector("iframe") ||
+                !["示例","3 首","全部音乐","开始播放"].every(s=>$("sourceImportSummary").textContent.includes(s))) return false;
+            dispatchEvent(new MessageEvent("message", {data:"collection-accept",origin:"null"}));
+            if (commands.length || !dialog.open) return false;
+            if (choice === "stale") pendingImport = null;
+            if (choice === "dismiss") dialog.close();
+            else $(choice === "cancel" ? "sourceImportCancel" : "sourceImportAccept").click();
+            await done;
+            if (commands.shift() !== "collection-decision 1 " + (choice === "accept" ? "accept" : "cancel")) return false;
+          }
+          $("addDialog").close();
+          const demo = {id:"demo", name:"示例", page:true, revision:"1"};
+          renderSources([demo]);
+          sourceItems.get("demo").button.click();
+          const frame = sourcePage.frame;
+          pendingImport = {sourceView:sourcePage, mixName:"新列表", collection:true};
+          const done = reviewCollection({id:"2",source:"demo",count:2,play:false});
+          renderSources([{...demo,revision:"2"}]); // source itself changed presentation, not identity
+          if (!$("sourceImportDialog").open || sourcePage.frame === frame || !$("sourceImportSummary").textContent.includes("新建「新列表」")) return false;
+          $("sourceImportAccept").click(); await done;
+          if (commands.shift() !== "collection-decision 2 accept") return false;
+          pendingImport = {sourceView:sourcePage, mixName:"新列表", collection:true};
+          const stale = reviewCollection({id:"3",source:"demo",count:2,play:false});
+          renderSources([]); // uninstall while deciding
+          await stale;
+          return commands.join() === "collection-decision 3 cancel";
+        })()""")
+        print('OK: host-only confirmation, destination/play summary, dismissal, stale preview and ignored frame decision')
     finally:
         if ws:
             ws.send(json.dumps({'id':2,'method':'Browser.close'})); ws.close()
         try: proc.wait(timeout=5)
         except subprocess.TimeoutExpired: proc.kill(); proc.wait()
-        server.shutdown()

@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory() as tmp:
         shutil.copy2(exe.parent / filename, root / filename)
     plugin = root / 'plugins' / 'fixture'
     plugin.mkdir(parents=True)
-    plugin.joinpath('source.ini').write_text('api=2\nname=fixture\nhosts=fixture.test\nhome=https://fixture.test/\ncollection_paths=/lists/\n')
+    plugin.joinpath('source.ini').write_text('api=2\nname=fixture\nhosts=fixture.test\nhome=https://fixture.test/\ncollection_paths=/lists/,#/playlist\n')
     plugin.joinpath('main.lua').write_text(r'''
 mp.register_script_message('bm-collection', function(token, target)
     local rows = 'https://fixture.test/b\tSecond\nhttps://fixture.test/a\tFirst\nhttps://fixture.test/b\tDuplicate'
@@ -30,9 +30,9 @@ end)
     parent = 'https://fixture.test/lists/'
     # Even an existing entry participates in the result. Never insert the parent URL,
     # duplicate a song, or commit any part of an invalid or oversized reply.
-    urls = ['https://fixture.test/a', parent+'cancel', parent+'ok', parent+'ok', parent+'bad', parent+'many', parent+'empty',
+    urls = ['https://fixture.test/a', parent+'cancel', parent+'ok', 'https://fixture.test/#/playlist?id=42', parent+'bad', parent+'many', parent+'empty',
             'https://fixture.test/single?next=/lists/']
-    proc = subprocess.run([root / exe.name], input=''.join('add '+url+'\n' + ('y\n' if url.endswith('/ok') else '\n' if url.endswith('/cancel') else '') for url in urls)+'list\nquit\n',
+    proc = subprocess.run([root / exe.name], input=''.join('add '+url+'\n' + ('y\n' if url.endswith('/ok') or '#/playlist?' in url else '\n' if url.endswith('/cancel') else '') for url in urls)+'list\nquit\n',
                           env=dict(os.environ, NICOMUSIC_HOME=str(root/'profile')), capture_output=True,
                           encoding='utf8', timeout=25, check=True)
     assert proc.stdout.count('合集已导入 2 首') == 2, proc.stdout

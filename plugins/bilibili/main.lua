@@ -5,6 +5,11 @@ local dir = mp.get_script_directory()
 local prefix = 'bm-' .. dir:match('([^/\\]+)[/\\]*$') .. '://'
 local exe = utils.join_path(dir, 'yt-dlp.exe')
 local extractors = utils.join_path(dir, 'extractors')
+
+-- Opt in for playback only, e.g. 'firefox' or 'firefox:<profile path>'.
+-- An empty value leaves yt-dlp in anonymous mode.
+local cookies_from_browser = ''
+
 local function accepts(target) return target:sub(1, #prefix) == prefix end
 local function http(url) return type(url) == 'string' and url:match('^https?://') end
 
@@ -12,7 +17,13 @@ local function resolve(target, playing, callback)
     local args = {exe, '--ignore-config', '--no-plugin-dirs', '--plugin-dirs', extractors,
         '--no-playlist', '--playlist-items', '1', '--simulate', '--socket-timeout', '8',
         '--retries', '0', '--extractor-retries', '0', '--encoding', 'utf-8',
-        '-f', 'bestaudio/best', '-j', '--', target}
+        '-f', 'bestaudio/best', '-j'}
+    if playing and cookies_from_browser ~= '' then
+        args[#args + 1] = '--cookies-from-browser'
+        args[#args + 1] = cookies_from_browser
+    end
+    args[#args + 1] = '--'
+    args[#args + 1] = target
     mp.command_native_async({name='subprocess', args=args, playback_only=playing,
         capture_stdout=true, capture_size=8*1024*1024}, function(ok, res)
         local info = ok and res.status == 0 and utils.parse_json(res.stdout)

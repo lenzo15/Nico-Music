@@ -12,7 +12,8 @@ inline std::filesystem::path pluginResource(std::wstring url, const PluginStamps
     if (slash == url.npos || dot >= slash) return {};
     auto suffix = url.substr(dot, slash-dot);
     bool visual = suffix == L".focus.bilimusic.local";
-    if (!visual && suffix != L".collection.bilimusic.local") return {};
+    const bool sourcePage = suffix == L".source.bilimusic.local";
+    if (!visual && !sourcePage) return {};
     const auto id = url.substr(8, dot-8);
     if (id.empty() || id.find_first_not_of(L"abcdefghijklmnopqrstuvwxyz0123456789-") != id.npos) return {};
     const auto& catalog = visual ? focus : sources;
@@ -26,10 +27,14 @@ inline std::filesystem::path pluginResource(std::wstring url, const PluginStamps
     fs::path relative(path);
     if (relative.has_root_path()) return {};
     for (const auto& part : relative) if (part == L"." || part == L"..") return {};
-    if (!visual) relative = L"confirm" / relative;
+    if (sourcePage) {
+        const auto ext = relative.extension().wstring();
+        if (ext != L".html" && ext != L".js" && ext != L".css" && ext != L".json" && ext != L".svg" &&
+            ext != L".png" && ext != L".webp" && ext != L".jpg" && ext != L".jpeg" && ext != L".woff2") return {};
+    }
     if (!entry->second.count(relative)) return {};
     auto file = root;
-    for (const auto& part : fs::path(id) / (visual ? L"focus" : L"") / relative) {
+    for (const auto& part : fs::path(id) / (visual ? L"focus" : L"page") / relative) {
         file /= part;
         if (GetFileAttributesW(file.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) return {};
     }

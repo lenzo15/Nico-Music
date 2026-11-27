@@ -129,6 +129,7 @@ class Station
     SourceRegistry sources{appDir() / L"plugins"};
     std::vector<Track> tracks;
     std::unique_ptr<Player> player;
+    Player::WarningChanges playbackWarnings; // session-only; playback errors are not library metadata
     std::deque<string> metadataQueue;
     string repeat = "off";
     static void applyRepeat(Player &p, const string &mode)
@@ -191,7 +192,7 @@ private:
         auto target = sources.route(url);
         if (target.empty())
             throw unavailable(url);
-        p.command({"loadfile", target.c_str(), "append"});
+        p.appendPlaylistEntry(target, url);
     }
     void queueMetadata(const string &url)
     {
@@ -240,6 +241,10 @@ private:
 
 public:
     const auto &entries() const { return tracks; }
+    string playbackWarning(const string& url) const {
+        const auto found = playbackWarnings.find(url);
+        return found == playbackWarnings.end() ? string{} : found->second;
+    }
     const Player *audio() const { return player.get(); }
     void queueMissingCovers()
     {
@@ -247,13 +252,28 @@ public:
             if (!t.thumbnail && sources.match(t.url))
                 metadataQueue.push_back(t.url);
     }
-    std::string errors(bool *libraryChanged = nullptr)
+    std::string errors(bool *libraryChanged = nullptr, std::optional<Player::PlaybackError>* playback = nullptr,
+                       const Player::ClientMessageSink& sink = {})
     {
         pumpMetadata();
         if (!player)
             return {};
         std::vector<Player::Metadata> updates;
-        auto err = player->poll(updates);
+        Player::WarningChanges warningChanges;
+        auto failure = player->poll(updates, warningChanges, sink);
+        for (const auto& [url, message] : warningChanges) {
+            bool changed = false;
+            if (message.empty()) changed = playbackWarnings.erase(url) != 0;
+            else if (playbackWarning(url) != message && std::any_of(tracks.begin(), tracks.end(),
+                        [&](const Track& track) { return track.url == url; })) {
+                playbackWarnings[url] = message;
+                changed = true;
+            }
+            if (changed && libraryChanged) *libraryChanged = true;
+        }
+        std::string err;
+        if (playback) *playback = std::move(failure);
+        else if (failure) err = std::move(failure->message);
         if (updates.empty())
             return err;
         auto copy = tracks;
@@ -364,8 +384,12 @@ public:
     {
         // Old library entries survive removal of their plugin but must not be
         // loaded, even indirectly via autoplay or a saved batch selection.
-        if (sources.route(tracks.at(i).url).empty())
-            throw unavailable(tracks[i].url);
+        const auto& url = tracks.at(i).url;
+        if (sources.route(url).empty()) {
+            const auto failure = unavailable(url);
+            playbackWarnings[url] = failure.what();
+            throw failure;
+        }
         std::vector<int> playable;
         for (int index : order)
             if (!sources.route(tracks.at(index).url).empty())
@@ -373,20 +397,25 @@ public:
         const auto it = std::find(playable.begin(), playable.end(), i);
         if (it == playable.end())
             throw std::runtime_error("曲目不在当前歌单中");
-        auto &p = engine();
-        if (!queueValid || queue != playable || p.integer("playlist-count") != static_cast<int>(playable.size()))
-        {
-            queueValid = false;
-            p.command({"stop"});
-            for (int index : playable)
-                appendForPlayback(p, tracks.at(index).url);
-            queue = playable;
-            queueValid = true;
+        try {
+            auto &p = engine();
+            if (!queueValid || queue != playable || p.integer("playlist-count") != static_cast<int>(playable.size()))
+            {
+                queueValid = false;
+                p.command({"stop"});
+                for (int index : playable)
+                    appendForPlayback(p, tracks.at(index).url);
+                queue = playable;
+                queueValid = true;
+            }
+            wholeLibrary = full;
+            p.command({"playlist-play-index", std::to_string(it - playable.begin()).c_str()});
+            p.command({"set", "pause", "no"});
+            cursor = i;
+        } catch (const std::exception& failure) {
+            playbackWarnings[url] = failure.what();
+            throw;
         }
-        wholeLibrary = full;
-        p.command({"playlist-play-index", std::to_string(it - playable.begin()).c_str()});
-        p.command({"set", "pause", "no"});
-        cursor = i;
     }
     void play(int i, bool newestFirst = false)
     {
@@ -566,6 +595,10 @@ public:
         bool mirrored = queueValid && player && player->integer("playlist-count") == queueSize();
         save(replacement); // Persist once; no in-memory or queue change on disk failure.
         tracks.swap(replacement);
+        for (auto it = playbackWarnings.begin(); it != playbackWarnings.end();) {
+            if (!indices.count(it->first)) it = playbackWarnings.erase(it);
+            else ++it;
+        }
         metadataQueue.erase(std::remove_if(metadataQueue.begin(), metadataQueue.end(),
                                            [&](const string &url) { return !indices.count(url); }),
                             metadataQueue.end());
@@ -579,7 +612,7 @@ public:
                 for (int pos = queueSize() - 1; pos >= 0; --pos)
                 {
                     if (remap[queue[pos]] < 0)
-                        player->command({"playlist-remove", std::to_string(pos).c_str()});
+                        player->removePlaylistEntry(pos);
                 }
                 for (int &i : queue)
                     i = remap[i];

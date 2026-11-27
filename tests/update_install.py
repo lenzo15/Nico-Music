@@ -38,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     catalog_name = 'plugins/bundled-plugins.tsv'
     catalog = (plugins/'bundled-plugins.tsv').read_bytes()
     ids = {line.split('\t')[0] for line in catalog.decode().splitlines() if line and not line.startswith('#')}
-    assert all(p.name in ids for p in plugins.iterdir() if (p/'source.ini').is_file() or (p/'focus/preset.ini').is_file())
+    # Local, independently installed packages need not be in the release catalog.
+    assert all((plugins/id/'source.ini').is_file() or (plugins/id/'focus/preset.ini').is_file() for id in ids)
     wave = {'plugins/wavehalo/focus/'+name: (plugins/'wavehalo/focus'/name).read_bytes()
             for name in ('preset.ini', 'style.css', 'preset.js')}
     def package(extra=None):
@@ -48,10 +49,18 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     def launch(digest, from_version='1.0.2'):
         return subprocess.run([harness,'--fixture-install',root,digest,from_version], capture_output=True, timeout=50)
     def clean(): return not list(root.glob('.nicomusic-update-*'))
+    def relaunched_and_exited():
+        # The stub creates its marker before the Windows image lock is released.
+        if not (root/'relaunched').exists(): return False
+        try:
+            with exe.open('r+b'): return True
+        except PermissionError: return False
     for extra, digest in [({}, '0'*64), ({'ui/../../escape':b'bad'}, None), ({'hotkeys.ini':b'bad'}, None)]:
         hashed = package(extra); result = launch(digest or hashed)
         assert result.returncode != 0 and clean() and exe.read_bytes()==b'original player', result
         assert (root/'hotkeys.ini').read_text()=='original' and not (root/'escape').exists()
+    for bad in (b'', b'1.01.2', b'1.0', b'1.2.3-beta', b'1.2.3\n2.0.0'):
+        assert launch(package({'plugins/bilibili/VERSION':bad})).returncode != 0 and clean()
     for bad in (b'bad row', b'wavehalo\t1.0.3\nwavehalo\t1.0.4', b'wavehalo\tnext'):
         assert launch(package({catalog_name:bad})).returncode != 0 and clean()
     print('OK: invalid SHA-256, paths and plugin catalogs rejected before shutdown')
@@ -62,7 +71,9 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     exe.write_bytes(new_exe)  # valid old player to restart after rollback
     # The injected CLI collision happens after a new plugin was placed.
     packages_before_failure = files.copy()
-    files = {catalog_name:catalog, **wave, **files}
+    (root/'plugins/existing').mkdir()
+    (root/'plugins/existing/retired.lua').write_bytes(b'original package')
+    files = {catalog_name:catalog, **wave, 'plugins/existing/new.lua':b'new', **files}
     package()
     job = root/('.nicomusic-update-{' + str(uuid.uuid4()) + '}'); job.mkdir()
     shutil.copyfile(root/'fixture.zip', job/'package.zip')
@@ -87,7 +98,9 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
         wait_for(finished)
         assert p.returncode==1 and clean() and (root/'ui/scripts/app.js').read_text()=='original'
         assert not (root/'plugins/wavehalo').exists() and not (root/catalog_name).exists()
-        wait_for(lambda: (root/'relaunched').exists()); (root/'relaunched').unlink()
+        assert (root/'plugins/existing/retired.lua').read_bytes() == b'original package'
+        assert not (root/'plugins/existing/new.lua').exists()
+        wait_for(relaunched_and_exited); (root/'relaunched').unlink()
     finally:
         if parent.poll() is None: parent.kill(); parent.wait()
         if p.poll() is None: p.kill(); p.wait()
@@ -97,19 +110,20 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
         (root/'relaunched').unlink(missing_ok=True)
         result=launch(package(extra), version)
         assert result.returncode==0, result.stderr.decode('utf-8',errors='replace')
-        wait_for(lambda: clean() and (root/'relaunched').exists())
+        wait_for(lambda: clean() and relaunched_and_exited())
 
     files = packages_before_failure
     (root/'plugins/bilibili').mkdir()
     (root/'plugins/bilibili/source.ini').write_bytes(b'old plugin file')
     files['plugins/bilibili/source.ini'] = b'updated plugin file'
-    files['plugins/custom/updated.ini'] = b'new plugin file'
+    (root/'plugins/bilibili/retired.lua').write_bytes(b'obsolete')
     skipped = {'plugins/vinyl/focus/preset.ini':b'previously shipped', 'plugins/unlisted/source.ini':b'unknown'}
     upgrade({**wave, **skipped}, '1.0.2')  # no incoming catalog: legacy behavior
     assert not (root/'plugins/wavehalo').exists()
     upgrade({catalog_name:catalog, **wave, **skipped}, '1.0.2')
     for name,data in {**files, **wave}.items(): assert (root/name).read_bytes()==data
     assert not any((root/name).exists() for name in skipped)
+    assert not (root/'plugins/bilibili/retired.lua').exists()
     shutil.rmtree(root/'plugins/wavehalo')  # user removes the previously bundled preset
     upgrade({catalog_name:catalog, **wave}, '1.0.3')
     assert not (root/'plugins/wavehalo').exists()
@@ -118,3 +132,22 @@ with tempfile.TemporaryDirectory(prefix='NicoMusic 更新 [test] ') as tmp:
     assert not (root/'plugins/wavehalo').exists() and not any((root/name).exists() for name in skipped)
     for name in ('hotkeys.ini','library.tsv','plugins/custom/plugin.ini'): assert (root/name).read_text()=='original'
     print('OK: new bundled plugins added, installed packages refreshed, removed/unlisted plugins stay absent across upgrades')
+
+    # A single upgrade can contain older, equal, newer and legacy packages.
+    incoming = {}
+    cases = [('newer','1.9.9','1.10.0',True), ('older','2.0.0','1.99.9',False),
+             ('equal','1.2.3','1.2.3',False), ('unversioned','1.0.0',None,False),
+             ('first',None,'0.0.0',True), ('damaged','bad','2.0.0',False)]
+    for name, local, remote, _ in cases:
+        prefix = f'plugins/{name}/'; folder = root/prefix; folder.mkdir()
+        if local is not None: (folder/'VERSION').write_bytes(local.encode())
+        if remote is not None: incoming[prefix+'VERSION'] = remote.encode()
+        (folder/'main.lua').write_bytes(b'old'); incoming[prefix+'main.lua'] = b'new'
+        incoming[prefix+'page/icon.png'] = b'new icon'
+    upgrade(incoming, '1.0.3')
+    for name, local, remote, updated in cases:
+        folder = root/'plugins'/name
+        assert (folder/'VERSION').read_text() == (remote if updated else local)
+        assert (folder/'main.lua').read_bytes() == (b'new' if updated else b'old')
+        assert (folder/'page/icon.png').exists() == updated
+    print('OK: numeric plugin versions protect whole packages, equal versions, downgrades and legacy updates')

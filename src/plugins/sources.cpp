@@ -1,4 +1,5 @@
 #include "sources.hpp"
+#include "plugin_version.hpp"
 #include <algorithm>
 #include <fstream>
 #include <map>
@@ -87,6 +88,15 @@ bool readManifest(const fs::path &folder, MusicSource &source) {
     if (!source.search.empty() &&
         (hostOf(source.search).empty() || source.search.find("{query}") == string::npos))
         return false;
+    const auto& sidebar = fields["sidebar"];
+    if (!sidebar.empty() && sidebar != "external" && sidebar != "page") return false;
+    source.sidebarPage = sidebar == "page";
+    const auto& icon = fields["icon"];
+    const auto dot = icon.rfind('.');
+    const auto iconExt = dot == string::npos ? "" : icon.substr(dot);
+    if (!icon.empty() && icon.size() <= 128 && icon.front() != '.' &&
+        icon.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == string::npos &&
+        (iconExt == ".svg" || iconExt == ".png" || iconExt == ".webp")) source.icon = icon;
     std::error_code ec;
     if (!fs::is_regular_file(folder / L"main.lua", ec)) return false;
     // Optional plugin-owned companion executable, never searched on PATH.
@@ -94,12 +104,34 @@ bool readManifest(const fs::path &folder, MusicSource &source) {
         if (dep.front() == '.' || dep.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") != string::npos ||
             !fs::is_regular_file(folder / fs::u8path(dep), ec)) return false;
     }
+    const auto& helper = fields["credential_helper"];
+    if (!helper.empty() && helper.size() <= 128 && helper.front() != '.' &&
+        helper.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-") == string::npos &&
+        lower(fs::u8path(helper).extension().u8string()) == ".exe") {
+        const auto status = fs::symlink_status(folder / fs::u8path(helper), ec);
+        if (fs::is_regular_file(status)) {
+            auto text = [&](const char* key, size_t limit) {
+                const auto& value = fields[key];
+                return value.size() <= limit && std::none_of(value.begin(), value.end(), [](unsigned char c) {
+                    return c < 32 || c == 127;
+                }) ? value : string{};
+            };
+            source.credentials = SourceCredentialSettings{
+                helper, text("credential_title", 160), text("credential_help", 800),
+                text("credential_label", 160), text("credential_placeholder", 240)
+            };
+        }
+    }
     std::istringstream paths(fields["collection_paths"]);
     for (string token; std::getline(paths, token, ',');) {
         auto path = strip(token);
-        if (path.empty() || path.front() != '/' || path.find_first_of("?#") != string::npos) return false;
+        const size_t offset = path.rfind("#/", 0) == 0 ? 1 : 0;
+        if (path.empty() || path[offset] != '/' || path.find_first_of("?#", offset) != string::npos) return false;
         source.collectionPaths.push_back(path);
     }
+    auto version = readPluginVersion(folder);
+    if (!version) return false;
+    source.version = *version;
     source.folder = folder;
     std::istringstream csv(fields["hosts"]);
     for (string token; std::getline(csv, token, ',');) {
@@ -165,15 +197,20 @@ bool SourceRegistry::listed(const string &url) const {
 bool SourceRegistry::isCollection(const string &url) const {
     const auto *s = match(url);
     if (!s || s->collectionPaths.empty() || hostOf(url).empty()) return false;
-    auto end = url.find_first_of("?#");
-    auto start = url.find('/', url.find("://") + 3);
-    if (start == string::npos || start >= end) return false;
-    auto path = url.substr(start, end - start);
+    const auto authority = url.find("://") + 3;
+    const auto start = url.find_first_of("/?#", authority);
+    const auto end = url.find_first_of("?#", authority);
+    const string path = start == string::npos || url[start] != '/' ? "/" : url.substr(start, end - start);
+    // Only treat a fragment as a route on the root page, and only for explicitly declared #/ paths.
+    const auto hash = url.find('#', authority);
+    const string hashPath = path == "/" && hash != string::npos && url.compare(hash, 2, "#/") == 0
+        ? url.substr(hash, url.find_first_of("?#", hash + 1) - hash) : "";
     for (const auto &part : s->collectionPaths) {
-        auto pos = path.find(part);
+        const auto& candidate = part.front() == '#' ? hashPath : path;
+        auto pos = candidate.find(part);
         if (pos == string::npos) continue;
         auto after = pos + part.size();
-        if (part.back() == '/' || after == path.size() || path[after] == '/') return true;
+        if (part.back() == '/' || after == candidate.size() || candidate[after] == '/') return true;
     }
     return false;
 }
