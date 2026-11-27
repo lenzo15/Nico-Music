@@ -401,15 +401,17 @@ $("sourceHome").onclick = () => {
   else if (sourcePage?.source.hasHome) send("source " + sourcePage.source.id);
 };
 function replyToSourcePage(id, data, error) {
-  const view = sourcePage;
-  if (!view?.request || view.request.id !== id) return;
+  const view = [sourcePage, pluginSettings.page()].find(v => v?.request?.id === id);
+  if (!view) return;
   clearTimeout(view.request.timer);
   view.frame.contentWindow?.postMessage({type: "source-response", id: view.request.client, data, error}, "*");
   view.request = undefined;
 }
 window.addEventListener("message", event => {
-  const view = sourcePage, msg = event.data;
-  if (!view || event.source !== view.frame.contentWindow || event.origin !== "null" || !msg) return;
+  const config = pluginSettings.page(), msg = event.data;
+  const view = [config, sourcePage].find(v => v && event.source === v.frame.contentWindow);
+  if (!view || event.origin !== "null" || !msg) return;
+  if (view === config && (msg.type !== "source-request" || !view.source.isSource)) return;
   if (msg.type === "source-profile" || msg.type === "source-collection") {
     // Never execute arbitrary page commands or let a frame open a browser. The header button
     // and the host-managed collection preview require a separate user decision.
@@ -430,12 +432,12 @@ window.addEventListener("message", event => {
       !/^[a-z0-9_-]{1,64}$/.test(msg.action)) return;
   let data;
   try { data = JSON.stringify(msg.data ?? null); } catch { return; }
-  if (new TextEncoder().encode(data).length > 16384 || view.request) {
+  if (new TextEncoder().encode(data).length > 16384 || sourcePage?.request || config?.request) {
     return event.source.postMessage({type: "source-response", id: msg.id, error: "请求过大或已有请求正在处理"}, "*");
   }
   const id = String(++sourceRequestSerial);
   view.request = {id, client: msg.id, timer: setTimeout(() => replyToSourcePage(id, "", "来源页面请求超时"), 16000)};
-  if (!send(`source-page ${view.source.id} ${id} ${msg.action} ${data}`)) replyToSourcePage(id, "", "无法连接播放器");
+  if (!send(`${view === config ? "source-settings" : "source-page"} ${view.source.id} ${id} ${msg.action} ${data}`)) replyToSourcePage(id, "", "无法连接播放器");
 });
 function showPlaybackError(failure) {
   const source = sourceItems.get(failure.source);
@@ -885,6 +887,7 @@ function sync() {
 const playbackShortcuts = createPlaybackShortcuts(toast, delta => send("volume-step " + delta));
 const appSettings = createSettings({shortcuts: playbackShortcuts, send, notify: toast, desktop: !!bridge});
 const sourceCredentials = createSourceCredentials({send, desktop: !!bridge});
+const pluginSettings = createPluginSettings(sourceCredentials);
 editHistory = createEditHistory({storage: localStorage, snapshot: membershipSnapshot, restore: restoreMembership,
   blocked: () => pendingMutation || !!pendingImport,
   applyNative: (id, direction) => new Promise((resolve, reject) => {
@@ -939,7 +942,7 @@ bridge?.addEventListener("message", (e) => {
     renderSources(msg.sources);
     sourceCredentials.discover(msg.sources);
   }
-  if (msg.sources || msg.focusPresets) appSettings.plugins(state.sources || [], state.focusPresets || []);
+  if (msg.sources || msg.focusPresets) pluginSettings.discover(state.sources || [], state.focusPresets || []);
   if (msg.sourcePageReply) {
     const {id, data, error} = msg.sourcePageReply;
     replyToSourcePage(id, data, error);

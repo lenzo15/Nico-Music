@@ -3,7 +3,7 @@ function createSourceCredentials({send, desktop}) {
   const el = id => document.getElementById(id);
   const dialog = el("sourceCredentialDialog"), form = el("sourceCredentialForm"), input = el("sourceCredentialInput");
   const message = el("sourceCredentialStatus"), save = el("saveSourceCredential"), clear = el("clearSourceCredential");
-  let sources = new Map(), signature = "", active = "", stored = false, pending, serial = 0;
+  let sources = new Map(), active = "", stored = false, pending, serial = 0;
   const title = source => source.credentialSettings.title || `${source.name} · 登录凭据`;
   function status(text, error = false) {
     message.textContent = text;
@@ -76,17 +76,6 @@ function createSourceCredentials({send, desktop}) {
     const supported = desktop ? items.filter(item => /^[a-z0-9-]{1,64}$/.test(item.id) && item.credentialSettings) : [];
     sources = new Map(supported.map(source => [source.id, source]));
     if (dialog.open && !sources.has(active)) { input.value = ""; dialog.close(); }
-    const key = JSON.stringify(supported.map(source => [source.id, title(source)]));
-    if (key === signature) return;
-    signature = key;
-    el("sourceSettings").hidden = !supported.length;
-    el("sourceCredentialEntries").replaceChildren(...supported.map(source => {
-      const button = document.createElement("button");
-      button.type = "button"; button.className = "subtle"; button.textContent = title(source);
-      button.setAttribute("aria-haspopup", "dialog");
-      button.onclick = () => open(source.id);
-      return button;
-    }));
   }
   return {discover, open, reply, has: id => sources.has(id)};
 }

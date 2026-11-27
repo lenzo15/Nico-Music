@@ -334,12 +334,16 @@ void chooseMixDirectory() {
 }
 LibraryHistory libraryHistory;
 string pendingLibraryEdit, pendingHistoryResult;
-bool sourceHasAsset(const MusicSource& source, const std::filesystem::path& file) {
-    auto it = appliedPages.find(source.id);
+bool pageHasAsset(const string& id, const std::filesystem::path& file) {
+    auto it = appliedPages.find(id);
     return it != appliedPages.end() && it->second.count(file);
 }
 bool hasSourcePage(const MusicSource& source) {
-    return source.sidebarPage && sourceHasAsset(source, L"index.html");
+    return source.sidebarPage && pageHasAsset(source.id, L"index.html");
+}
+// Presence and revision come from the same catalog used to serve the sandboxed page.
+string settingsPageJson(const string& id) {
+    return pageHasAsset(id, L"settings.html") ? ",\"settingsRevision\":" + quotedJson(pageVersions.at(id)) : "";
 }
 void publish(bool library, string err = {}, string imported = {}, bool queueChanged = false, bool importFailed = false,
              std::vector<int> importedTracks = {}) {
@@ -392,7 +396,7 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             if (n) data += ',';
             const auto& preset = focusPresets[n];
             data += "{\"id\":" + quotedJson(preset.id) + ",\"name\":" + quotedJson(preset.name) +
-                ",\"version\":" + quotedJson(preset.version) + ",\"revision\":" + quotedJson(focusVersions.at(preset.id)) + "}";
+                ",\"version\":" + quotedJson(preset.version) + ",\"revision\":" + quotedJson(focusVersions.at(preset.id)) + settingsPageJson(preset.id) + "}";
         }
         data += "],\"sources\":[";
         bool firstSource = true;
@@ -400,9 +404,9 @@ void publish(bool library, string err = {}, string imported = {}, bool queueChan
             if (!firstSource) data += ',';
             firstSource = false;
             data += "{\"id\":" + quotedJson(s.id) + ",\"name\":" + quotedJson(s.name) +
-                    ",\"version\":" + quotedJson(s.version) + ",\"hasHome\":" + (s.home.empty() ? "false" : "true") +
+                    ",\"version\":" + quotedJson(s.version) + settingsPageJson(s.id) + ",\"hasHome\":" + (s.home.empty() ? "false" : "true") +
                     ",\"page\":" + (hasSourcePage(s) ? "true" : "false") +
-                    ",\"icon\":" + quotedJson(!s.icon.empty() && sourceHasAsset(s, std::filesystem::u8path(s.icon)) ? s.icon : "") +
+                    ",\"icon\":" + quotedJson(!s.icon.empty() && pageHasAsset(s.id, std::filesystem::u8path(s.icon)) ? s.icon : "") +
                     ",\"revision\":" + quotedJson(pageVersions.at(s.id)) + ",\"extensions\":[";
             for (size_t n = 0; n < s.fileExtensions.size(); ++n) {
                 if (n) data += ',';
@@ -597,13 +601,15 @@ void handle(const string &message) {
             return;
         }
         if (cmd == "window") { windowAction(arg); return; }
-        if (cmd == "open-data-folder") {
-            const auto dir = libraryFile().parent_path();
+        if (cmd == "open-data-folder" || cmd == "open-plugin-folder") {
+            const bool plugins = cmd == "open-plugin-folder";
+            const auto dir = plugins ? appDir() / L"plugins" : libraryFile().parent_path();
+            const string label = plugins ? "插件目录" : "数据文件夹";
             std::error_code ec;
             fs::create_directories(dir, ec);
-            if (ec) throw std::runtime_error("无法创建数据文件夹，请检查目录权限");
+            if (ec) throw std::runtime_error("无法创建" + label + "，请检查目录权限");
             if (reinterpret_cast<INT_PTR>(ShellExecuteW(window, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
-                throw std::runtime_error("无法打开数据文件夹，请检查目录是否可访问");
+                throw std::runtime_error("无法打开" + label + "，请检查目录是否可访问");
             return;
         }
         if (cmd == "hotkeys-capture") {
@@ -785,12 +791,12 @@ void handle(const string &message) {
         else if (cmd == "seek" && station->active() >= 0) {
             number(arg, 0, INT_MAX);
             station->engine().command({"seek", arg.c_str(), "absolute"});
-        } else if (cmd == "source-page") {
+        } else if (cmd == "source-page" || cmd == "source-settings") {
             const auto [id, tail] = split(arg);
             const auto [request, rest] = split(tail);
             const auto [action, data] = split(rest);
             const auto s = station->providers().find(id);
-            if (!s || !hasSourcePage(*s) || request.empty() || request.size() > 24 ||
+            if (!s || !(cmd == "source-settings" ? pageHasAsset(id, L"settings.html") : hasSourcePage(*s)) || request.empty() || request.size() > 24 ||
                 request.find_first_not_of("0123456789") != string::npos || action.empty() || action.size() > 64 ||
                 action.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_-") != string::npos || data.size() > 16384)
                 throw std::runtime_error("无效的来源页面请求");

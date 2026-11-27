@@ -19,6 +19,7 @@
     <script defer src="scripts/shortcuts.js"></script>
     <script defer src="scripts/settings.js"></script>
     <script defer src="scripts/source-credentials.js"></script>
+    <script defer src="scripts/plugin-settings.js"></script>
     <script defer src="scripts/edit-history.js"></script>
     <script defer src="scripts/updates.js"></script>
     <script defer src="scripts/collection-confirm.js"></script>
@@ -307,6 +308,7 @@
       <div class="settingsTabs" role="tablist" aria-label="设置分类">
         <button type="button" id="settingsTabGeneral" data-settings-tab="general" role="tab" aria-selected="true" aria-controls="settingsGeneral">常规</button>
         <button type="button" id="settingsTabHotkeys" data-settings-tab="hotkeys" role="tab" aria-selected="false" aria-controls="settingsHotkeys" tabindex="-1">热键</button>
+        <button type="button" id="settingsTabPlugins" data-settings-tab="plugins" role="tab" aria-selected="false" aria-controls="settingsPlugins" tabindex="-1">插件</button>
         <button type="button" id="settingsTabAbout" data-settings-tab="about" role="tab" aria-selected="false" aria-controls="about" tabindex="-1">关于</button>
       </div>
       <div id="settingsBody" class="settingsBody slimScrollbar">
@@ -315,10 +317,6 @@
           <h3 id="dataFolderTitle">本地数据</h3>
           <p>音乐库、自建歌单、收藏及设置保存在数据文件夹中。完整备份前，请先退出播放器。</p>
           <button type="button" id="openDataFolder" class="subtle" disabled>打开数据文件夹</button>
-        </section>
-        <section id="sourceSettings" class="generalSection" aria-labelledby="sourceSettingsTitle" hidden>
-          <h3 id="sourceSettingsTitle">音源设置</h3>
-          <div id="sourceCredentialEntries" class="settingsActions"></div>
         </section>
         <section class="generalSection" aria-labelledby="editHistoryTitle">
           <h3 id="editHistoryTitle">操作提示与撤销</h3>
@@ -345,9 +343,16 @@
           <div class="settingsActions"><button type="button" id="resetHotkeys" class="subtle">恢复默认</button><button type="button" id="cancelHotkeyChanges" class="subtle">取消修改</button><button type="submit" id="saveHotkeys" class="primary" disabled>保存热键</button></div>
         </form>
       </section>
+      <section id="settingsPlugins" role="tabpanel" aria-labelledby="settingsTabPlugins" hidden>
+        <div class="pluginToolbar">
+          <h3 id="pluginVersionsTitle">已加载插件 <span id="pluginCount">0</span></h3>
+          <button type="button" id="openPluginFolder" class="pluginButton" disabled><i data-icon="folder"></i>打开插件目录</button>
+        </div>
+        <p id="noPluginVersions">暂无已加载的插件</p>
+        <ul id="pluginVersions" aria-labelledby="pluginVersionsTitle"></ul>
+      </section>
       <section id="about" role="tabpanel" aria-labelledby="settingsTabAbout" hidden>
       <h3>关于 NicoMusic</h3>
-      <p>插件化、极简的仿网易云音乐播放器。</p>
       <p id="starInvite">✨ 如果喜欢 NicoMusic，欢迎到 GitHub 点亮一颗 Star。</p>
       <p>
         <a id="projectLink" href="https://github.com/lenzo15/Nico-Music" target="_blank" rel="noopener noreferrer" title="在默认浏览器中打开 GitHub 项目">
@@ -369,14 +374,16 @@
         </div>
         <label class="autoUpdate"><input type="checkbox" id="autoUpdate" checked />启动时自动检查更新</label>
       </section>
-      <section aria-labelledby="pluginVersionsTitle">
-        <h3 id="pluginVersionsTitle">已加载插件</h3>
-        <p id="noPluginVersions">暂无已加载的插件</p>
-        <ul id="pluginVersions"></ul>
-      </section>
       </section>
       </div>
       </div>
+    </dialog>
+    <dialog id="pluginConfig" class="sheet" aria-labelledby="pluginConfigTitle">
+      <header class="sheetHeader">
+        <h2 id="pluginConfigTitle"></h2>
+        <button type="button" class="close icon" aria-label="关闭插件设置"><i data-icon="close"></i></button>
+      </header>
+      <div id="pluginConfigPage"></div>
     </dialog>
     <dialog id="sourceCredentialDialog" class="sheet" aria-labelledby="sourceCredentialTitle">
       <form id="sourceCredentialForm" autocomplete="off">

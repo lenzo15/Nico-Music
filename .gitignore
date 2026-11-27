@@ -15,11 +15,7 @@ cmake_install.cmake
 *.pdb
 *.ilk
 *.res
-
-# Independently distributed plugin and its private tests (keep local copies)
-/plugins/netease/
-/tests/netease.py
-/tests/netease_*
+/other_plugins/
 
 # Local design notes and references (not project documentation)
 /.docs/

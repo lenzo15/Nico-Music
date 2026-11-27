@@ -34,20 +34,25 @@ struct PluginSnapshot {
     SourceRegistry sources;
     std::vector<FocusPreset> presets;
     PluginStamps sourceFiles, pageFiles, focusFiles;
+  private:
+    void scanPage(const std::string& id, const std::filesystem::path& folder) {
+        auto [entry, inserted] = pageFiles.try_emplace(id);
+        if (!inserted) return; // A package may provide both a source and a preset.
+        const auto dir = folder / L"page";
+        const auto attrs = GetFileAttributesW(dir.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) && !(attrs & FILE_ATTRIBUTE_REPARSE_POINT))
+            entry->second = pluginFiles(dir, false);
+    }
+  public:
     explicit PluginSnapshot(const std::filesystem::path& root, bool visual = true) : sources(root) {
         for (auto& s : sources.all()) {
             sourceFiles.emplace(s.id, pluginFiles(s.folder, true));
-            if (visual) {
-                auto& files = pageFiles[s.id];
-                const auto dir = s.folder / L"page";
-                const auto attrs = GetFileAttributesW(dir.c_str());
-                if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) && !(attrs & FILE_ATTRIBUTE_REPARSE_POINT))
-                    files = pluginFiles(dir, false);
-            }
+            if (visual) scanPage(s.id, s.folder);
         }
         if (visual) {
             presets = findFocusPresets(root);
             for (auto& p : presets) {
+                scanPage(p.id, p.folder.parent_path());
                 auto files = pluginFiles(p.folder, false);
                 // VERSION is outside focus/. Track its stamp without exposing it as a web resource.
                 if (!p.version.empty()) {

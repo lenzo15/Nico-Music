@@ -114,7 +114,7 @@ function createFocusView() {
     const token = generation;
     sheet = style; sheet.media = "all"; document.body.dataset.focusPreset = id;
     lifecycle = new AbortController();
-    instance = create({root, background, reduceMotion, signal: lifecycle.signal, renderCover: el => { const t = current(); if (t) cover(el, t); },
+    instance = create({root, background, reduceMotion, signal: lifecycle.signal, getSettings: () => presetPreferences(id), renderCover: el => { const t = current(); if (t) cover(el, t); },
       requestLevels(on, options) {
         if (generation !== token) return;
         const want = !!on && !document.hidden && !reduceMotion.matches && !!state.playing && !state.paused;

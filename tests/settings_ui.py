@@ -111,27 +111,35 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(lambda: js("document.readyState==='complete' && document.getElementById('hotkey-prev') && !document.getElementById('hotkey-prev').disabled"))
         assert js("!document.getElementById('info') && $('settingsButton').getAttribute('aria-label')==='设置'")
         js("$('settingsButton').click()")
-        assert js("$('settings').open && !$('settingsGeneral').hidden && $('settingsHotkeys').hidden && $('about').hidden && document.activeElement===$('settingsTabGeneral')")
-        assert js("JSON.stringify([...document.querySelectorAll('[data-settings-tab]')].map(t=>t.dataset.settingsTab))===JSON.stringify(['general','hotkeys','about'])")
-        js("nativeMessage({sources:[{id:'a',name:'来源 A',version:'1.10.0'}],focusPresets:[{id:'b',name:'预设 B'}]})")
+        assert js("$('settings').open && !$('settingsGeneral').hidden && $('settingsHotkeys').hidden && $('settingsPlugins').hidden && $('about').hidden && document.activeElement===$('settingsTabGeneral')")
+        assert js("JSON.stringify([...document.querySelectorAll('[data-settings-tab]')].map(t=>t.dataset.settingsTab))===JSON.stringify(['general','hotkeys','plugins','about'])")
+        js("$('settingsTabPlugins').click()")
+        assert js("!$('settingsPlugins').hidden && $('settingsPlugins').contains($('pluginVersions')) && $('about').hidden && !$('about').textContent.includes('插件')")
+        js("nativeMessage({sources:[{id:'a',name:'来源 A',version:'1.10.0'}],focusPresets:[{id:'a',name:'预设 A'},{id:'b',name:'预设 B'}]})")
+        assert js("$('pluginCount').textContent==='2' && $('pluginVersions').querySelector('.pluginInfo small').textContent.includes('音源、专注预设')")
         assert js("$('noPluginVersions').hidden && $('pluginVersions').children.length===2 && $('pluginVersions').textContent.includes('v1.10.0') && $('pluginVersions').textContent.includes('未声明版本')")
         js("nativeMessage({sources:[],focusPresets:[]})")
-        assert js("!$('noPluginVersions').hidden && !$('pluginVersions').childElementCount")
+        assert js("!$('noPluginVersions').hidden && !$('pluginVersions').childElementCount && $('pluginCount').textContent==='0'")
+        assert js("$('settingsPlugins').contains($('openPluginFolder')) && !$('openPluginFolder').disabled")
+        js("hostMessages.length=0; $('openPluginFolder').click()")
+        assert js("JSON.stringify(hostMessages)===JSON.stringify(['open-plugin-folder']) && $('settings').open")
+        js("$('settingsTabGeneral').click()")
         assert js("!$('openDataFolder').disabled")
         js("hostMessages.length=0; $('openDataFolder').click()")
         assert js("JSON.stringify(hostMessages)===JSON.stringify(['open-data-folder']) && $('settings').open")
-        assert js("$('sourceSettings').hidden")
+        assert js("!$('settingsGeneral').querySelector('[aria-haspopup=dialog]')")
+        js("$('settingsTabPlugins').click()")
         js("""window.credentialSources=[
           {id:'fixture-a',name:'示例 A',page:false,credentialSettings:{title:'示例 A · Cookie',help:'1. 打开网页 <script>\\\\n2. 复制凭据',label:'账户 Cookie',placeholder:'粘贴 Cookie'}},
           {id:'fixture-b',name:'示例 B',page:false,credentialSettings:{}},
           {id:'fixture-c',name:'示例 C',page:false}];
           nativeMessage({sources:credentialSources}); hostMessages.length=0""")
-        x, y = js("""(() => {const button=$('sourceCredentialEntries').firstElementChild; button.scrollIntoView();
+        x, y = js("""(() => {const button=$('pluginVersions').querySelector('button'); button.scrollIntoView();
           const r=button.getBoundingClientRect(); return [r.x+r.width/2,r.y+r.height/2];})()""")
         for kind, buttons in [('mousePressed', 1), ('mouseReleased', 0)]:
             cdp('Input.dispatchMouseEvent', {'type':kind, 'x':x, 'y':y, 'button':'left', 'buttons':buttons, 'clickCount':1})
         until(lambda: js("$('sourceCredentialStatus').textContent==='尚未保存登录凭据。'"))
-        assert js("""$('sourceCredentialEntries').children.length===2 && $('sourceCredentialDialog').matches(':modal') &&
+        assert js("""$('pluginVersions').querySelectorAll('button').length===2 && $('sourceCredentialDialog').matches(':modal') &&
           $('settings').open && $('sourceCredentialDialog').classList.contains('sheet') &&
           $('sourceCredentialTitle').textContent==='示例 A · Cookie' && document.activeElement===$('sourceCredentialInput') &&
           $('sourceCredentialHelp').textContent.includes('<script>\\n2. 复制凭据') && !$('sourceCredentialHelp').children.length &&
@@ -151,13 +159,34 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         js("$('toast').querySelector('button').click()")
         until(lambda: js("$('sourceCredentialStatus').textContent==='尚未保存登录凭据。'"))
         assert js("$('sourceCredentialTitle').textContent==='示例 B · 登录凭据' && $('clearSourceCredential').disabled")
-        js("$('sourceCredentialDialog').close(); $('settingsButton').click(); $('sourceCredentialEntries').firstElementChild.click()")
+        js("$('sourceCredentialDialog').close(); $('settingsButton').click(); $('settingsTabPlugins').click(); $('pluginVersions').querySelector('button').click()")
         until(lambda: js("!$('clearSourceCredential').disabled"))
         js("$('clearSourceCredential').click()")
         until(lambda: js("$('clearSourceCredential').disabled && $('sourceCredentialStatus').textContent.startsWith('已清除')"))
         js("nativeMessage({sources:[credentialSources[2]]})")
-        assert js("$('sourceSettings').hidden && !$('sourceCredentialDialog').open && $('settings').open")
+        assert js("!$('pluginVersions').querySelector('button') && !$('sourceCredentialDialog').open && $('settings').open")
         print('OK: two plugin credential forms, shared sheet style, masked input, isolation, save/clear, Escape and login shortcut')
+        js("""nativeMessage({sources:[{id:'s',name:'S',settingsRevision:'1',hasHome:false}],
+              focusPresets:[{id:'p',name:'P',settingsRevision:'2'}]}); $('pluginVersions').querySelector('button').click();
+              window.frameMessage=(win,data,origin='null')=>dispatchEvent(new MessageEvent('message',{source:win,origin,data}));
+              window.configWindow=()=>$('pluginConfigPage').firstElementChild.contentWindow;
+              hostMessages.length=0;
+              frameMessage(configWindow(),{type:'source-request',action:'status',id:'1'});
+              frameMessage(configWindow(),{type:'source-collection',name:'test',url:'https://example.com'});""")
+        assert js("""$('pluginConfig').open && $('pluginConfigPage').firstChild.sandbox.value==='allow-scripts' &&
+          $('pluginConfigPage').firstChild.src==='https://s.source.bilimusic.local/settings.html?v=1' &&
+          hostMessages.length===1 && /^source-settings s [0-9]+ status null$/.test(hostMessages[0])""")
+        js("nativeMessage({sources:[]})")
+        assert js("!$('pluginConfig').open && !$('pluginConfigPage').firstChild")
+        js("""$('pluginVersions').querySelector('button').click();
+          window.writePref={type:'preset-write',id:'1',plugin:'s',data:{color:'blue'}};
+          frameMessage(window,writePref); frameMessage(configWindow(),writePref,'https://invalid.example')""")
+        assert js("presetPreferences('p')===null")
+        js("frameMessage(configWindow(),writePref)")
+        assert js("presetPreferences('p').color==='blue' && presetPreferences('s')===null")
+        js("nativeMessage({focusPresets:[{id:'p',name:'P',settingsRevision:'3'}]})")
+        assert js("!$('pluginConfig').open && !$('pluginConfigPage').firstChild")
+        print('OK: isolated source/preset settings pages, scoped storage, unload and revision changes')
         js("$('settingsTabHotkeys').click()")
         assert js("!$('settingsHotkeys').hidden && $('hotkey-prev').value==='Ctrl + Alt + ←'")
         assert js("$('hotkeyForm').querySelectorAll('input').length===3 && [...$('hotkeyForm').querySelectorAll('input')].every(i=>i.readOnly)")
@@ -273,7 +302,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         assert js("$('settingsTabGeneral').getAttribute('aria-selected')==='true' && document.activeElement===$('settingsTabGeneral')")
         key('ArrowRight', vk=39)
         assert js("$('settingsTabHotkeys').getAttribute('aria-selected')==='true' && document.activeElement===$('settingsTabHotkeys')")
-        key('ArrowLeft', vk=37)
+        key('ArrowRight', vk=39)
+        assert js("!$('settingsPlugins').hidden && document.activeElement===$('settingsTabPlugins')")
+        key('Home', vk=36)
         assert js("$('settingsTabGeneral').getAttribute('aria-selected')==='true'")
         key('ArrowLeft', vk=37)
         assert js("$('settingsTabAbout').getAttribute('aria-selected')==='true'")
@@ -286,7 +317,7 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
             js("$('settingsTabHotkeys').click()")
             baseline = js(geometry)
             assert baseline[2:4] == [min(620, width - 32), min(522, height - 32)], (width, height, baseline)
-            for tab in ('General', 'About', 'Hotkeys', 'About', 'General', 'Hotkeys'):
+            for tab in ('General', 'Plugins', 'About', 'Hotkeys', 'Plugins', 'General', 'Hotkeys'):
                 js(f"$('settingsTab{tab}').click()")
                 assert js(geometry) == baseline, (width, height, tab)
             js("$('settingsTabAbout').click(); nativeMessage({updater:{phase:'downloading',received:512,total:1024}})")
@@ -319,7 +350,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         until(lambda: js("!window.reloadPending && document.readyState==='complete' && document.getElementById('openDataFolder') && !!document.getElementById('settingsButton').onclick"))
         js("$('settingsButton').click(); hostMessages.length=0; $('openDataFolder').click()")
         assert js("!$('settingsGeneral').hidden && $('openDataFolder').disabled && hostMessages.length===0")
-        print('OK: browser-only preview disables the native data-folder action')
+        js("$('settingsTabPlugins').click(); $('openPluginFolder').click()")
+        assert js("$('openPluginFolder').disabled && hostMessages.length===0")
+        print('OK: browser-only preview disables native folder actions')
     finally:
         if ws:
             try:

@@ -83,13 +83,23 @@ static void sourceAssetChanges(const fs::path& examples) {
     const auto pkg = root / L"source-page";
     fs::create_directories(root);
     fs::copy(examples / L"source-page", pkg, fs::copy_options::recursive);
+    const auto theme = root / "theme";
+    fs::create_directories(theme / "focus");
+    fs::create_directories(theme / "page");
+    std::ofstream(theme / "focus/preset.ini") << "api=1\nname=Theme\n";
+    std::ofstream(theme / "focus/preset.js").close();
+    std::ofstream(theme / "focus/style.css").close();
     const PluginSnapshot before(root);
+    std::ofstream(theme / "page/settings.html") << "theme settings";
     std::ofstream(pkg / "page/style.css", std::ios::app) << "/* changed */";
     fs::create_directory(pkg / "confirm");
     std::ofstream(pkg / "confirm/index.html") << "legacy UI";
     const PluginSnapshot assets(root), cli(root, false);
     verify(before.pageFiles != assets.pageFiles && before.sourceFiles == assets.sourceFiles &&
            cli.sourceFiles == assets.sourceFiles && cli.pageFiles.empty(), "page edit invalidated Lua");
+    verify(assets.focusFiles == before.focusFiles &&
+           pluginResource(L"https://theme.source.bilimusic.local/settings.html", {}, assets.pageFiles, root) == theme / "page/settings.html" &&
+           assets.pageFiles.at("source-page").count("settings.html"), "settings pages missing or invalidated preset");
     verify(pluginResource(L"https://source-page.collection.bilimusic.local/index.html", {}, assets.pageFiles, root).empty(),
            "obsolete collection frame origin still served");
     std::ofstream(pkg / "main.lua", std::ios::app) << "-- changed";

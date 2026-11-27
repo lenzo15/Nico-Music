@@ -2,9 +2,15 @@
 function createSettings({shortcuts, send, notify, desktop}) {
   const el = id => document.getElementById(id), dialog = el("settings");
   const actions = ["prev", "next", "toggle"];
-  el("openDataFolder").disabled = !desktop;
-  el("openDataFolder").title = desktop ? "在资源管理器中打开当前数据文件夹" : "请在 NicoMusic 桌面窗口中打开数据文件夹";
-  el("openDataFolder").onclick = () => { if (desktop) send("open-data-folder"); };
+  for (const [id, command, label] of [
+    ["openDataFolder", "open-data-folder", "数据文件夹"],
+    ["openPluginFolder", "open-plugin-folder", "插件目录"],
+  ]) {
+    const button = el(id);
+    button.disabled = !desktop;
+    button.title = desktop ? `在资源管理器中打开${label}` : `请在 NicoMusic 桌面窗口中打开${label}`;
+    button.onclick = () => { if (desktop) send(command); };
+  }
   let draft = shortcuts.bindings(), ready = false, saving = false, target = -1, recording = false, captureRequest = 0;
   let loadWarning = "", retryRegistration = false;
   function sendCapture(enabled) { send(`hotkeys-capture ${enabled ? "on" : "off"} ${++captureRequest}`); }
@@ -124,22 +130,7 @@ function createSettings({shortcuts, send, notify, desktop}) {
     if (target >= 0) { stopCapture(); status(); }
   });
   render();
-  function plugins(sources, presets) {
-    const rows = new Map();
-    for (const [kind, items] of [["音源", sources], ["专注预设", presets]]) {
-      for (const {id, name, version} of items) {
-        if (rows.has(id)) { rows.get(id).kinds.push(kind); continue; }
-        rows.set(id, {name, version, kinds:[kind]});
-      }
-    }
-    el("pluginVersions").replaceChildren(...Array.from(rows.values(), ({name, version, kinds}) => {
-      const li = document.createElement("li");
-      li.textContent = `${name}（${kinds.join("、")}） · ${version ? "v" + version : "未声明版本"}`;
-      return li;
-    }));
-    el("noPluginVersions").hidden = rows.size > 0;
-  }
-  return {plugins, message(msg) {
+  return {message(msg) {
     if (typeof msg.hotkeyWarning === "string") loadWarning = msg.hotkeyWarning;
     if (msg.hotkeys && !msg.hotkeyCapture)
       retryRegistration = actions.some((action, index) => shortcuts.bindings()[index].key && !msg.hotkeys[action]);

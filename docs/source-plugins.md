@@ -62,9 +62,16 @@ icon=icon.svg
 - 桌面来源页还可发送 `{type:"source-profile", url}` 设置页头外链（`null` 恢复默认），或 `{type:"source-collection", url, name}` 请求预览歌单，新建同名本地列表。消息使用相同的父窗口及目标 origin；仅接受当前 iframe。只支持属于当前插件的 HTTPS 链接，歌单路径还须在 `collection_paths` 内。主页须由用户点击宿主页头按钮；歌单须完成标准合集确认，不接受页面直接写入曲目。
 - [离线示例](../examples/plugins/source-page/) 演示状态查询、模拟登录及播放报错，不涉及真实账户。复制到 EXE 同目录的 `plugins/source-page/`，在 WAV 旁新建 `.bmsource` 文件，写入 `{"file":"伴奏.wav"}` 后添加到音乐库。构建时开启 `-DNICOMUSIC_SOURCE_TESTS=ON` 后，可运行 `NicoMusicSourceTest <libmpv-2.dll 所在目录> <源码根目录>` 验证资源分派和真实 Lua 消息往返。
 
+## 自定义配置页（桌面，可选）
+
+音源和专注预设都可以提供 `page/settings.html`。宿主自动在「设置 → 插件」对应条目下显示「插件设置」，无需添加侧栏入口，也不用修改宿主。双类型插件共享一页；没有该文件则不显示按钮。页面在独立沙箱中打开，资源、CSP 和消息来源校验规则与侧栏内嵌页相同。仅修改 `page/` 不重启播放；正在使用的配置页若已更新或被移除会关闭，下次打开读取新内容。
+
+- 音源设置页沿用上文的 `source-request` / `source-response` 调用本插件 Lua，由插件校验并持久化参数；不能发起侧栏导航或导入。普通配置和登录凭据应分开：不要在 HTML 配置页读取或保存 Cookie，使用下方掩码表单。
+- 专注预设设置页使用 `parent.postMessage({type:"preset-read", id:"1"}, "https://studio.bilimusic.local")` 读取，或用 `type:"preset-write"` 和 `data`（最多 16 KiB 的 JSON）保存非敏感偏好。检查父窗口和 origin 后读取 `{type:"preset-response", id, data, error?}`；未保存时 `data` 为 `null`。宿主按插件 ID 隔离，预设 `mountFocus` 的上下文可调用 `getSettings()` 读取最新值。
+
 ## 登录凭据设置（桌面，可选）
 
-插件可在 `source.ini` 声明登录凭据表单。宿主在「设置 → 常规 → 音源设置」内提供入口，并用统一弹窗渲染。它与 `sidebar` 独立，无需插件提供 HTML 或修改播放器：
+插件可在 `source.ini` 声明登录凭据表单。宿主在「设置 → 插件」的对应插件条目内提供入口，并用统一弹窗渲染。它与 `sidebar` 独立，无需插件提供 HTML 或修改播放器：
 
 ```ini
 credential_helper=example.exe
